@@ -18,15 +18,23 @@ func NewChatRepository(db *gorm.DB) *ChatRepository {
 }
 
 func (r *ChatRepository) Upsert(ctx context.Context, chat *model.Chat) error {
+	existing := &model.Chat{}
+	err := r.db.WithContext(ctx).Where("telegram_user_id = ?", chat.TelegramUserID).First(existing).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return r.db.WithContext(ctx).Create(chat).Error
+	}
+	if err != nil {
+		return err
+	}
+
 	return r.db.WithContext(ctx).
-		Where("telegram_user_id = ?", chat.TelegramUserID).
-		Assign(model.Chat{
-			ChatID:            chat.ChatID,
-			Username:          chat.Username,
-			ProvisionalUserID: chat.ProvisionalUserID,
-			UserID:            chat.UserID,
-		}).
-		FirstOrCreate(chat).Error
+		Model(existing).
+		Updates(map[string]any{
+			"chat_id":             chat.ChatID,
+			"username":            chat.Username,
+			"provisional_user_id": chat.ProvisionalUserID,
+			"user_id":             nil,
+		}).Error
 }
 
 func (r *ChatRepository) FindByTelegramUserID(ctx context.Context, telegramUserID string) (*model.Chat, error) {
