@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/gorilla/mux"
@@ -22,6 +23,7 @@ type Handler struct {
 	usersClient  userspb.UserServiceClient
 	healthClient healthpb.HealthServiceClient
 	botToken     string
+	authKeys     sync.Map
 }
 
 func NewHandler(

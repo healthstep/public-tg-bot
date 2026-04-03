@@ -2,7 +2,6 @@ package bot
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"strconv"
 
@@ -19,7 +18,41 @@ func (h *Handler) handleStartWithKey(ctx context.Context, msg *tgbotapi.Message,
 		return
 	}
 
-	provID, err := uuid.Parse(resp.GetProvisionalUserId())
+	telegramUserID := strconv.FormatInt(msg.From.ID, 10)
+
+	existing, _ := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
+	if existing != nil && existing.UserID != nil {
+		h.handleLogin(ctx, msg, existing, key)
+		return
+	}
+
+	h.handleRegistration(ctx, msg, resp.GetProvisionalUserId(), key)
+}
+
+func (h *Handler) handleLogin(ctx context.Context, msg *tgbotapi.Message, chat *model.Chat, authKey string) {
+	userResp, err := h.usersClient.GetUser(ctx, &userspb.GetUserRequest{UserId: chat.UserID.String()})
+	if err != nil {
+		log.Printf("get user for login: %v", err)
+		h.sendText(msg.Chat.ID, "Произошла ошибка. Попробуйте позже.")
+		return
+	}
+
+	_, err = h.usersClient.VerifyPhone(ctx, &userspb.VerifyPhoneRequest{
+		PhoneE164: userResp.GetPhoneE164(),
+		AuthKey:   authKey,
+		Platform:  "telegram",
+	})
+	if err != nil {
+		log.Printf("login verify phone: %v", err)
+		h.sendText(msg.Chat.ID, "Произошла ошибка. Попробуйте позже.")
+		return
+	}
+
+	h.sendWithMainMenu(msg.Chat.ID, "С возвращением! Вы успешно авторизованы.")
+}
+
+func (h *Handler) handleRegistration(ctx context.Context, msg *tgbotapi.Message, provisionalUserID string, authKey string) {
+	provID, err := uuid.Parse(provisionalUserID)
 	if err != nil {
 		log.Printf("parse provisional user id: %v", err)
 		h.sendText(msg.Chat.ID, "Произошла ошибка. Попробуйте позже.")
@@ -43,11 +76,12 @@ func (h *Handler) handleStartWithKey(ctx context.Context, msg *tgbotapi.Message,
 		return
 	}
 
-	h.requestPhone(msg.Chat.ID, key)
+	h.authKeys.Store(telegramUserID, authKey)
+	h.requestPhone(msg.Chat.ID)
 }
 
-func (h *Handler) requestPhone(chatID int64, _ string) {
-	text := "Для завершения авторизации поделитесь номером телефона.\n\n" +
+func (h *Handler) requestPhone(chatID int64) {
+	text := "Для завершения регистрации поделитесь номером телефона.\n\n" +
 		"Нажмите кнопку ниже:"
 
 	contactBtn := tgbotapi.NewKeyboardButtonContact("📱 Поделиться номером")
@@ -82,7 +116,7 @@ func (h *Handler) handlePhoneShared(ctx context.Context, msg *tgbotapi.Message) 
 	telegramUserID := strconv.FormatInt(msg.From.ID, 10)
 	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
 	if err != nil || chat == nil {
-		h.sendText(msg.Chat.ID, "Сначала перейдите по ссылке авторизации из приложения.")
+		h.sendText(msg.Chat.ID, "Сначала перейдите по ссылке авторизации из приложении.")
 		return
 	}
 
@@ -91,9 +125,15 @@ func (h *Handler) handlePhoneShared(ctx context.Context, msg *tgbotapi.Message) 
 		return
 	}
 
+	var authKey string
+	if v, ok := h.authKeys.LoadAndDelete(telegramUserID); ok {
+		authKey = v.(string)
+	}
+
 	resp, err := h.usersClient.VerifyPhone(ctx, &userspb.VerifyPhoneRequest{
 		PhoneE164:         phone,
 		ProvisionalUserId: chat.ProvisionalUserID.String(),
+		AuthKey:           authKey,
 		Platform:          "telegram",
 	})
 	if err != nil {
@@ -113,7 +153,5 @@ func (h *Handler) handlePhoneShared(ctx context.Context, msg *tgbotapi.Message) 
 		log.Printf("update user id: %v", err)
 	}
 
-	h.sendWithMainMenu(msg.Chat.ID,
-		fmt.Sprintf("Авторизация успешна! Добро пожаловать в ЗдравоШаг."),
-	)
+	h.sendWithMainMenu(msg.Chat.ID, "Регистрация завершена! Добро пожаловать в ЗдравоШаг.")
 }
