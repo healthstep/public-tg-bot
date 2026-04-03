@@ -14,6 +14,7 @@ import (
 	"github.com/helthtech/public-tg-bot/internal/repository"
 	"github.com/nats-io/nats.go"
 	"github.com/porebric/configs"
+	"github.com/porebric/logger"
 	"github.com/porebric/resty"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -81,7 +82,8 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("nats subscribe: %w", err)
 	}
 
-	router := resty.NewRouter(nil, nil)
+	l := logger.New(logger.InfoLevel)
+	router := resty.NewRouter(func() *logger.Logger { return l }, nil)
 	router.MuxRouter().HandleFunc("/tg/{token}", handler.WebhookHTTP).Methods("POST")
 
 	log.Println("public-tg-bot starting")
