@@ -17,12 +17,27 @@ import (
 	"github.com/helthtech/public-tg-bot/internal/repository"
 )
 
+// pendingNumericInput stores users waiting to type a numeric criterion value.
+// key: telegramUserID (string), value: PendingInput
+var pendingNumericInput sync.Map
+
+// pendingAnalysis tracks the last selected analysis per user (for cancel command).
+// key: telegramUserID (string), value: analysisID (string)
+var pendingAnalysis sync.Map
+
+type PendingInput struct {
+	CriterionID   string
+	CriterionName string
+	AnalysisID    string
+}
+
 type Handler struct {
 	bot          *tgbotapi.BotAPI
 	chatRepo     *repository.ChatRepository
 	usersClient  userspb.UserServiceClient
 	healthClient healthpb.HealthServiceClient
 	botToken     string
+	siteURL      string
 	authKeys     sync.Map
 }
 
@@ -32,6 +47,7 @@ func NewHandler(
 	usersClient userspb.UserServiceClient,
 	healthClient healthpb.HealthServiceClient,
 	botToken string,
+	siteURL string,
 ) *Handler {
 	return &Handler{
 		bot:          bot,
@@ -39,6 +55,7 @@ func NewHandler(
 		usersClient:  usersClient,
 		healthClient: healthClient,
 		botToken:     botToken,
+		siteURL:      siteURL,
 	}
 }
 
@@ -86,7 +103,26 @@ func (h *Handler) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		return
 	}
 
+	telegramUserID := fmt.Sprintf("%d", msg.From.ID)
 	text := strings.TrimSpace(msg.Text)
+
+	// "cancel" resets all criteria for the pending analysis.
+	if strings.EqualFold(text, "отмена") || strings.EqualFold(text, "cancel") {
+		pendingNumericInput.Delete(telegramUserID)
+		if aID, ok := pendingAnalysis.LoadAndDelete(telegramUserID); ok {
+			h.handleCancelAnalysis(ctx, msg, aID.(string))
+		} else {
+			h.sendWithMainMenu(msg.Chat.ID, "Нечего отменять.")
+		}
+		return
+	}
+
+	// Check if user is waiting to type a numeric value.
+	if val, ok := pendingNumericInput.LoadAndDelete(telegramUserID); ok {
+		pending := val.(PendingInput)
+		h.handleNumericInput(ctx, msg, pending)
+		return
+	}
 
 	switch {
 	case strings.HasPrefix(text, "/start"):
@@ -104,10 +140,8 @@ func (h *Handler) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		h.handleAddData(ctx, msg)
 	case BtnProgress:
 		h.handleProgress(ctx, msg)
-	case BtnChecklist:
-		h.handleChecklist(ctx, msg)
-	case BtnNotifications:
-		h.handleNotificationsMenu(ctx, msg)
+	case BtnRecommendations:
+		h.handleRecommendations(ctx, msg)
 	default:
 		h.sendWithMainMenu(msg.Chat.ID, "Пожалуйста, выберите действие из меню.")
 	}
@@ -119,36 +153,71 @@ func (h *Handler) handleCallback(ctx context.Context, cb *tgbotapi.CallbackQuery
 
 	data := cb.Data
 	chatID := cb.Message.Chat.ID
+	telegramUserID := fmt.Sprintf("%d", cb.From.ID)
 
 	switch {
-	case data == "add_upload":
-		h.sendText(chatID, "Загрузите файл (PDF, фото анализов) в этот чат, и мы обработаем его автоматически.")
+	// Step 1: user clicked "Add Data" → show analysis list
+	// (handled as a button, not callback; the callback is for analysis selection)
 
-	case data == "add_manual":
-		h.handleManualEntryList(ctx, chatID)
+	// Step 2: user selects an analysis → show criteria + input options
+	case strings.HasPrefix(data, "analysis_"):
+		analysisID := strings.TrimPrefix(data, "analysis_")
+		pendingAnalysis.Store(telegramUserID, analysisID)
+		h.showCriteriaForAnalysis(ctx, chatID, analysisID)
 
-	case data == "add_visit":
-		h.handleMarkDoneList(ctx, chatID)
+	// Step 3a: user chose "enter manually" for a criterion
+	case strings.HasPrefix(data, "criterion_manual_"):
+		// format: criterion_manual_<criterionID>:<criterionName>:<analysisID>
+		parts := strings.SplitN(strings.TrimPrefix(data, "criterion_manual_"), ":", 3)
+		if len(parts) >= 2 {
+			analysisID := ""
+			if len(parts) == 3 {
+				analysisID = parts[2]
+			}
+			pendingNumericInput.Store(telegramUserID, PendingInput{
+				CriterionID:   parts[0],
+				CriterionName: parts[1],
+				AnalysisID:    analysisID,
+			})
+			h.sendText(chatID, fmt.Sprintf(
+				"Введите числовое значение для <b>%s</b>:\n\n<i>Отправьте «отмена» чтобы сбросить все данные этого анализа.</i>",
+				parts[1],
+			))
+		}
 
-	case strings.HasPrefix(data, "criterion_"):
-		criterionID := strings.TrimPrefix(data, "criterion_")
-		h.sendText(chatID, fmt.Sprintf("Введите значение для критерия.\nОтправьте число.\n\n(criterion_id: %s)", criterionID))
-
-	case strings.HasPrefix(data, "markdone_"):
-		criterionID := strings.TrimPrefix(data, "markdone_")
+	// Step 3b: user chose "mark done" for a criterion
+	// format: criterion_done_<criterionID>:<analysisID>
+	case strings.HasPrefix(data, "criterion_done_"):
+		parts := strings.SplitN(strings.TrimPrefix(data, "criterion_done_"), ":", 2)
+		criterionID := parts[0]
+		if len(parts) == 2 {
+			pendingAnalysis.Store(telegramUserID, parts[1])
+		}
 		h.handleMarkDone(ctx, chatID, cb.From.ID, criterionID)
+
+	// Step 3c: upload file instruction
+	// format: criterion_upload_<criterionID>:<analysisID>
+	case strings.HasPrefix(data, "criterion_upload_"):
+		parts := strings.SplitN(strings.TrimPrefix(data, "criterion_upload_"), ":", 2)
+		criterionID := parts[0]
+		if len(parts) == 2 {
+			pendingAnalysis.Store(telegramUserID, parts[1])
+		}
+		h.sendText(chatID, fmt.Sprintf(
+			"Загрузите файл (PDF, фото анализов) в этот чат.\n\n(ID критерия: <code>%s</code>)\n\nОтправьте «отмена» чтобы сбросить все данные этого анализа.",
+			criterionID,
+		))
 
 	case data == "onboarding_next_1":
 		h.sendOnboardingStep2(chatID)
-
 	case data == "onboarding_next_2":
 		h.sendOnboardingStep3(chatID)
-
 	case data == "onboarding_done":
 		h.sendMainMenu(chatID)
-
 	case data == "back_main":
 		h.sendMainMenu(chatID)
+	case data == "back_analysis":
+		h.handleAddData(ctx, &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}})
 	}
 }
 

@@ -19,16 +19,25 @@ func (h *Handler) handleProgress(ctx context.Context, msg *tgbotapi.Message) {
 		return
 	}
 
-	dash, err := h.healthClient.GetDashboard(ctx, &healthpb.GetDashboardRequest{
-		UserId: chat.UserID.String(),
-	})
+	userID := chat.UserID.String()
+
+	// Get progress stats.
+	prog, err := h.healthClient.GetProgress(ctx, &healthpb.GetProgressRequest{UserId: userID})
 	if err != nil {
-		log.Printf("get dashboard: %v", err)
+		log.Printf("get progress: %v", err)
 		h.sendText(msg.Chat.ID, "Не удалось загрузить прогресс. Попробуйте позже.")
 		return
 	}
 
-	text := formatDashboard(dash)
+	// Get all criteria with user values.
+	criteria, err := h.healthClient.GetUserCriteria(ctx, &healthpb.GetUserCriteriaRequest{UserId: userID})
+	if err != nil {
+		log.Printf("get user criteria: %v", err)
+		h.sendText(msg.Chat.ID, "Не удалось загрузить данные. Попробуйте позже.")
+		return
+	}
+
+	text := formatProgress(prog, criteria.GetEntries())
 
 	m := tgbotapi.NewMessage(msg.Chat.ID, text)
 	m.ParseMode = tgbotapi.ModeHTML
@@ -38,30 +47,48 @@ func (h *Handler) handleProgress(ctx context.Context, msg *tgbotapi.Message) {
 	}
 }
 
-func formatDashboard(d *healthpb.DashboardResponse) string {
+func formatProgress(prog *healthpb.GetProgressResponse, entries []*healthpb.UserCriterionEntry) string {
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("<b>📊 Ваш прогресс</b>\n\n"))
-	b.WriteString(fmt.Sprintf("Уровень: <b>%s</b>\n", d.GetLevel()))
+	b.WriteString("<b>📊 Мой прогресс</b>\n\n")
+	b.WriteString(fmt.Sprintf("Уровень: <b>%s</b>\n", prog.GetLevelLabel()))
 
-	pct := d.GetProgressPercent()
+	pct := prog.GetPercent()
 	filled := int(pct / 10)
 	empty := 10 - filled
 	bar := strings.Repeat("▓", filled) + strings.Repeat("░", empty)
-	b.WriteString(fmt.Sprintf("Прогресс: %s %.0f%%\n\n", bar, pct))
+	b.WriteString(fmt.Sprintf("Прогресс: %s %.0f%%\n", bar, pct))
+	b.WriteString(fmt.Sprintf("Заполнено: %d / %d критериев\n\n", prog.GetFilled(), prog.GetTotal()))
 
-	b.WriteString(fmt.Sprintf("Заполнено: %d / %d критериев\n", d.GetFilledCriteria(), d.GetTotalCriteria()))
-	if d.GetOverdueCriteria() > 0 {
-		b.WriteString(fmt.Sprintf("⚠️ Просрочено: %d\n", d.GetOverdueCriteria()))
+	if len(entries) == 0 {
+		b.WriteString("Данные пока не добавлены. Нажмите «➕ Добавить данные»!")
+		return b.String()
 	}
 
-	if len(d.GetStates()) > 0 {
-		b.WriteString("\n<b>Критерии:</b>\n")
-		for _, s := range d.GetStates() {
-			icon := statusIcon(s.GetStatus())
-			b.WriteString(fmt.Sprintf("%s %s", icon, s.GetCriterionName()))
-			if s.GetLastValueSummary() != "" {
-				b.WriteString(fmt.Sprintf(" — %s", s.GetLastValueSummary()))
+	// Group entries by analysis.
+	type analysisGroup struct {
+		name    string
+		entries []*healthpb.UserCriterionEntry
+	}
+	groupMap := map[string]*analysisGroup{}
+	var groupOrder []string
+	for _, e := range entries {
+		aid := e.GetAnalysisId()
+		if _, ok := groupMap[aid]; !ok {
+			groupMap[aid] = &analysisGroup{name: e.GetAnalysisName()}
+			groupOrder = append(groupOrder, aid)
+		}
+		groupMap[aid].entries = append(groupMap[aid].entries, e)
+	}
+
+	for _, aid := range groupOrder {
+		g := groupMap[aid]
+		b.WriteString(fmt.Sprintf("\n<b>🔬 %s</b>\n", g.name))
+		for _, e := range g.entries {
+			icon := statusEmoji(e.GetStatus())
+			b.WriteString(fmt.Sprintf("  %s %s", icon, e.GetCriterionName()))
+			if e.GetValue() != "" {
+				b.WriteString(fmt.Sprintf(" — <b>%s</b>", e.GetValue()))
 			}
 			b.WriteString("\n")
 		}
@@ -70,59 +97,17 @@ func formatDashboard(d *healthpb.DashboardResponse) string {
 	return b.String()
 }
 
-func statusIcon(status string) string {
+func statusEmoji(status string) string {
 	switch status {
-	case "ok", "filled":
+	case "ok":
 		return "✅"
-	case "overdue":
+	case "warning":
+		return "⚠️"
+	case "critical":
 		return "🔴"
-	case "pending":
-		return "🟡"
+	case "empty", "":
+		return "⚪"
 	default:
 		return "⚪"
-	}
-}
-
-func (h *Handler) handleChecklist(ctx context.Context, msg *tgbotapi.Message) {
-	telegramUserID := strconv.FormatInt(msg.From.ID, 10)
-	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
-	if err != nil || chat == nil || chat.UserID == nil {
-		h.sendText(msg.Chat.ID, "Вы не авторизованы. Перейдите по ссылке из приложения ЗдравоШаг.")
-		return
-	}
-
-	resp, err := h.healthClient.GetUserCriterionStates(ctx, &healthpb.GetUserCriterionStatesRequest{
-		UserId: chat.UserID.String(),
-	})
-	if err != nil {
-		log.Printf("get user criterion states: %v", err)
-		h.sendText(msg.Chat.ID, "Не удалось загрузить чеклист. Попробуйте позже.")
-		return
-	}
-
-	var b strings.Builder
-	b.WriteString("<b>✅ Чеклист здоровья</b>\n\n")
-
-	if len(resp.GetStates()) == 0 {
-		b.WriteString("Нет данных. Начните добавлять показатели здоровья!")
-	} else {
-		for _, s := range resp.GetStates() {
-			icon := statusIcon(s.GetStatus())
-			b.WriteString(fmt.Sprintf("%s <b>%s</b>\n", icon, s.GetCriterionName()))
-			if s.GetLastValueSummary() != "" {
-				b.WriteString(fmt.Sprintf("   Последнее: %s\n", s.GetLastValueSummary()))
-			}
-			if s.GetRecommendation() != "" {
-				b.WriteString(fmt.Sprintf("   💡 %s\n", s.GetRecommendation()))
-			}
-			b.WriteString("\n")
-		}
-	}
-
-	m := tgbotapi.NewMessage(msg.Chat.ID, b.String())
-	m.ParseMode = tgbotapi.ModeHTML
-	m.ReplyMarkup = BackToMainInlineKeyboard()
-	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send checklist: %v", err)
 	}
 }

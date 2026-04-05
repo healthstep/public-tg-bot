@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strconv"
 
@@ -37,7 +38,7 @@ func (h *Handler) handleLogin(ctx context.Context, msg *tgbotapi.Message, chat *
 		return
 	}
 
-	_, err = h.usersClient.VerifyPhone(ctx, &userspb.VerifyPhoneRequest{
+	verifyResp, err := h.usersClient.VerifyPhone(ctx, &userspb.VerifyPhoneRequest{
 		PhoneE164: userResp.GetPhoneE164(),
 		AuthKey:   authKey,
 		Platform:  "telegram",
@@ -48,7 +49,12 @@ func (h *Handler) handleLogin(ctx context.Context, msg *tgbotapi.Message, chat *
 		return
 	}
 
-	h.sendWithMainMenu(msg.Chat.ID, "С возвращением! Вы успешно авторизованы.")
+	text := "С возвращением! Вы успешно авторизованы."
+	if h.siteURL != "" && verifyResp.GetToken() != "" {
+		loginURL := h.siteURL + "/auth?token=" + verifyResp.GetToken()
+		text += fmt.Sprintf("\n\n🌐 <a href=\"%s\">Войти на сайт одним нажатием</a>", loginURL)
+	}
+	h.sendWithMainMenu(msg.Chat.ID, text)
 }
 
 func (h *Handler) handleRegistration(ctx context.Context, msg *tgbotapi.Message, provisionalUserID string, authKey string) {
@@ -153,5 +159,10 @@ func (h *Handler) handlePhoneShared(ctx context.Context, msg *tgbotapi.Message) 
 		log.Printf("update user id: %v", err)
 	}
 
-	h.sendWithMainMenu(msg.Chat.ID, "Регистрация завершена! Добро пожаловать в ЗдравоШаг.")
+	text := "Регистрация завершена! Добро пожаловать в ЗдравоШаг. 🎉"
+	if h.siteURL != "" && resp.GetToken() != "" {
+		loginURL := h.siteURL + "/auth?token=" + resp.GetToken()
+		text += fmt.Sprintf("\n\n🌐 <a href=\"%s\">Войти на сайт одним нажатием</a>", loginURL)
+	}
+	h.sendWithMainMenu(msg.Chat.ID, text)
 }

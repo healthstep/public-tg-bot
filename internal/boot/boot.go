@@ -73,9 +73,10 @@ func Run(ctx context.Context) error {
 	}
 	log.Printf("webhook set to %s/tg/***", webhookHost)
 
+	siteURL := configs.Value(ctx, "site_url").String()
 	chatRepo := repository.NewChatRepository(db)
 
-	handler := bot.NewHandler(tgBot, chatRepo, usersClient, healthClient, botToken)
+	handler := bot.NewHandler(tgBot, chatRepo, usersClient, healthClient, botToken, siteURL)
 
 	notifHandler := natshandler.NewNotificationHandler(chatRepo, handler)
 	if err := notifHandler.Subscribe(nc); err != nil {

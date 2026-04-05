@@ -5,8 +5,7 @@ import tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 const (
 	BtnAddData       = "➕ Добавить данные"
 	BtnProgress      = "📊 Мой прогресс"
-	BtnChecklist     = "✅ Чеклист здоровья"
-	BtnNotifications = "🔔 Уведомления"
+	BtnRecommendations = "💡 Рекомендации"
 )
 
 func MainMenuKeyboard() tgbotapi.ReplyKeyboardMarkup {
@@ -16,25 +15,7 @@ func MainMenuKeyboard() tgbotapi.ReplyKeyboardMarkup {
 			tgbotapi.NewKeyboardButton(BtnProgress),
 		),
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton(BtnChecklist),
-			tgbotapi.NewKeyboardButton(BtnNotifications),
-		),
-	)
-}
-
-func AddDataInlineKeyboard() tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📄 Загрузить файл", "add_upload"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✏️ Ввести вручную", "add_manual"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Отметить визит", "add_visit"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("« Назад", "back_main"),
+			tgbotapi.NewKeyboardButton(BtnRecommendations),
 		),
 	)
 }

@@ -5,35 +5,85 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	healthpb "github.com/helthtech/core-health/pkg/proto/health"
 )
 
 type NotificationPayload struct {
-	Title         string   `json:"title"`
-	Body          string   `json:"body"`
-	CriterionName string   `json:"criterion_name,omitempty"`
-	Actions       []string `json:"actions,omitempty"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
 }
 
-func (h *Handler) handleNotificationsMenu(ctx context.Context, msg *tgbotapi.Message) {
-	_ = ctx
-	text := "<b>🔔 Уведомления</b>\n\n" +
-		"Бот будет присылать вам напоминания о:\n" +
-		"• Просроченных обследованиях\n" +
-		"• Плановых визитах к врачу\n" +
-		"• Важных показателях здоровья\n\n" +
-		"Уведомления приходят автоматически."
+// handleRecommendations shows all current recommendations for the user.
+func (h *Handler) handleRecommendations(ctx context.Context, msg *tgbotapi.Message) {
+	telegramUserID := strconv.FormatInt(msg.From.ID, 10)
+	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
+	if err != nil || chat == nil || chat.UserID == nil {
+		h.sendText(msg.Chat.ID, "Вы не авторизованы. Перейдите по ссылке из приложения ЗдравоШаг.")
+		return
+	}
+
+	resp, err := h.healthClient.GetRecommendations(ctx, &healthpb.GetRecommendationsRequest{
+		UserId: chat.UserID.String(),
+	})
+	if err != nil {
+		log.Printf("get recommendations: %v", err)
+		h.sendText(msg.Chat.ID, "Не удалось загрузить рекомендации. Попробуйте позже.")
+		return
+	}
+
+	text := formatRecommendations(resp.GetRecommendations())
 
 	m := tgbotapi.NewMessage(msg.Chat.ID, text)
 	m.ParseMode = tgbotapi.ModeHTML
 	m.ReplyMarkup = BackToMainInlineKeyboard()
 	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send notifications menu: %v", err)
+		log.Printf("send recommendations: %v", err)
 	}
 }
 
+func formatRecommendations(recs []*healthpb.Recommendation) string {
+	var b strings.Builder
+	b.WriteString("<b>💡 Рекомендации</b>\n\n")
+
+	if len(recs) == 0 {
+		b.WriteString("🎉 Всё отлично! Все показатели заполнены и в норме.")
+		return b.String()
+	}
+
+	for _, r := range recs {
+		icon := severityEmoji(r.GetSeverity())
+		b.WriteString(fmt.Sprintf("%s <b>%s</b>", icon, r.GetCriterionName()))
+		if r.GetAnalysisName() != "" {
+			b.WriteString(fmt.Sprintf(" (%s)", r.GetAnalysisName()))
+		}
+		b.WriteString("\n")
+		if r.GetText() != "" {
+			b.WriteString(fmt.Sprintf("   %s\n", r.GetText()))
+		}
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+func severityEmoji(severity string) string {
+	switch severity {
+	case "critical":
+		return "🔴"
+	case "warning":
+		return "⚠️"
+	case "ok":
+		return "✅"
+	default:
+		return "💡"
+	}
+}
+
+// SendNotification sends a bot notification message to the chat.
 func (h *Handler) SendNotification(chatID int64, templateCode string, payloadJSON string) {
 	var payload NotificationPayload
 	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
@@ -54,21 +104,8 @@ func FormatNotification(templateCode string, p *NotificationPayload) string {
 	var b strings.Builder
 
 	switch templateCode {
-	case "overdue_reminder":
-		b.WriteString("🔴 <b>Напоминание</b>\n\n")
-		if p.CriterionName != "" {
-			b.WriteString(fmt.Sprintf("Показатель <b>%s</b> просрочен.\n", p.CriterionName))
-		}
-		if p.Body != "" {
-			b.WriteString(p.Body + "\n")
-		}
-		b.WriteString("\nИспользуйте меню «➕ Добавить данные» для обновления.")
-
-	case "visit_reminder":
-		b.WriteString("📅 <b>Напоминание о визите</b>\n\n")
-		if p.Title != "" {
-			b.WriteString(p.Title + "\n")
-		}
+	case "daily_rec":
+		b.WriteString("💡 <b>Рекомендация дня</b>\n\n")
 		if p.Body != "" {
 			b.WriteString(p.Body + "\n")
 		}
