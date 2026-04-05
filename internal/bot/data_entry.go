@@ -96,6 +96,11 @@ func (h *Handler) handleCriterionSelect(ctx context.Context, chatID int64, teleg
 			"Отправьте <b>+</b>, если у вас уже есть <b>%s</b>, и <b>-</b>, если нет.\n\n<i>Введите «отмена» чтобы сбросить все ваши данные.</i>",
 			name,
 		)
+	case "boolean":
+		promptText = fmt.Sprintf(
+			"Отправьте <b>+</b>, если результат <b>%s</b> положительный, и <b>-</b>, если отрицательный.\n\n<i>Введите «отмена» чтобы сбросить все ваши данные.</i>",
+			name,
+		)
 	default:
 		promptText = fmt.Sprintf(
 			"Введите число для показателя <b>%s</b>:\n\n<i>Введите «отмена» чтобы сбросить все ваши данные.</i>",
@@ -147,6 +152,17 @@ func (h *Handler) handleUserInput(ctx context.Context, msg *tgbotapi.Message, pe
 			return
 		default:
 			h.sendText(chatID, "Пожалуйста, отправьте <b>+</b> или <b>-</b>.")
+			pendingNumericInput.Store(telegramUserID, pending)
+			return
+		}
+	case "boolean":
+		switch text {
+		case "+":
+			value = "1"
+		case "-":
+			value = "0"
+		default:
+			h.sendText(chatID, "Пожалуйста, отправьте <b>+</b> (положительный) или <b>-</b> (отрицательный).")
 			pendingNumericInput.Store(telegramUserID, pending)
 			return
 		}
