@@ -56,11 +56,7 @@ func formatRecommendations(recs []*healthpb.Recommendation) string {
 
 	for _, r := range recs {
 		icon := severityEmoji(r.GetSeverity())
-		b.WriteString(fmt.Sprintf("%s <b>%s</b>", icon, r.GetCriterionName()))
-		if r.GetAnalysisName() != "" {
-			b.WriteString(fmt.Sprintf(" (%s)", r.GetAnalysisName()))
-		}
-		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf("%s <b>%s</b>\n", icon, r.GetCriterionName()))
 		if r.GetText() != "" {
 			b.WriteString(fmt.Sprintf("   %s\n", r.GetText()))
 		}

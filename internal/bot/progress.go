@@ -65,33 +65,13 @@ func formatProgress(prog *healthpb.GetProgressResponse, entries []*healthpb.User
 		return b.String()
 	}
 
-	// Group entries by analysis.
-	type analysisGroup struct {
-		name    string
-		entries []*healthpb.UserCriterionEntry
-	}
-	groupMap := map[string]*analysisGroup{}
-	var groupOrder []string
 	for _, e := range entries {
-		aid := e.GetAnalysisId()
-		if _, ok := groupMap[aid]; !ok {
-			groupMap[aid] = &analysisGroup{name: e.GetAnalysisName()}
-			groupOrder = append(groupOrder, aid)
+		icon := statusEmoji(e.GetStatus())
+		b.WriteString(fmt.Sprintf("%s %s", icon, e.GetCriterionName()))
+		if e.GetValue() != "" {
+			b.WriteString(fmt.Sprintf(" — <b>%s</b>", e.GetValue()))
 		}
-		groupMap[aid].entries = append(groupMap[aid].entries, e)
-	}
-
-	for _, aid := range groupOrder {
-		g := groupMap[aid]
-		b.WriteString(fmt.Sprintf("\n<b>🔬 %s</b>\n", g.name))
-		for _, e := range g.entries {
-			icon := statusEmoji(e.GetStatus())
-			b.WriteString(fmt.Sprintf("  %s %s", icon, e.GetCriterionName()))
-			if e.GetValue() != "" {
-				b.WriteString(fmt.Sprintf(" — <b>%s</b>", e.GetValue()))
-			}
-			b.WriteString("\n")
-		}
+		b.WriteString("\n")
 	}
 
 	return b.String()
