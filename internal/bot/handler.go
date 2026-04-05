@@ -25,6 +25,10 @@ var pendingNumericInput sync.Map
 // key: telegramUserID (string), value: analysisID (string)
 var pendingAnalysis sync.Map
 
+// criterionNames caches criterionID -> criterionName to avoid embedding names in
+// callback data (Telegram limits callback_data to 64 bytes).
+var criterionNames sync.Map
+
 type PendingInput struct {
 	CriterionID   string
 	CriterionName string
@@ -166,43 +170,37 @@ func (h *Handler) handleCallback(ctx context.Context, cb *tgbotapi.CallbackQuery
 		h.showCriteriaForAnalysis(ctx, chatID, analysisID)
 
 	// Step 3a: user chose "enter manually" for a criterion
+	// format: criterion_manual_<criterionID>  (name looked up from criterionNames map)
 	case strings.HasPrefix(data, "criterion_manual_"):
-		// format: criterion_manual_<criterionID>:<criterionName>:<analysisID>
-		parts := strings.SplitN(strings.TrimPrefix(data, "criterion_manual_"), ":", 3)
-		if len(parts) >= 2 {
-			analysisID := ""
-			if len(parts) == 3 {
-				analysisID = parts[2]
-			}
-			pendingNumericInput.Store(telegramUserID, PendingInput{
-				CriterionID:   parts[0],
-				CriterionName: parts[1],
-				AnalysisID:    analysisID,
-			})
-			h.sendText(chatID, fmt.Sprintf(
-				"Введите числовое значение для <b>%s</b>:\n\n<i>Отправьте «отмена» чтобы сбросить все данные этого анализа.</i>",
-				parts[1],
-			))
+		criterionID := strings.TrimPrefix(data, "criterion_manual_")
+		name := ""
+		if v, ok := criterionNames.Load(criterionID); ok {
+			name = v.(string)
 		}
+		analysisID := ""
+		if v, ok := pendingAnalysis.Load(telegramUserID); ok {
+			analysisID = v.(string)
+		}
+		pendingNumericInput.Store(telegramUserID, PendingInput{
+			CriterionID:   criterionID,
+			CriterionName: name,
+			AnalysisID:    analysisID,
+		})
+		h.sendText(chatID, fmt.Sprintf(
+			"Введите числовое значение для <b>%s</b>:\n\n<i>Отправьте «отмена» чтобы сбросить все данные этого анализа.</i>",
+			name,
+		))
 
 	// Step 3b: user chose "mark done" for a criterion
-	// format: criterion_done_<criterionID>:<analysisID>
+	// format: criterion_done_<criterionID>
 	case strings.HasPrefix(data, "criterion_done_"):
-		parts := strings.SplitN(strings.TrimPrefix(data, "criterion_done_"), ":", 2)
-		criterionID := parts[0]
-		if len(parts) == 2 {
-			pendingAnalysis.Store(telegramUserID, parts[1])
-		}
+		criterionID := strings.TrimPrefix(data, "criterion_done_")
 		h.handleMarkDone(ctx, chatID, cb.From.ID, criterionID)
 
 	// Step 3c: upload file instruction
-	// format: criterion_upload_<criterionID>:<analysisID>
+	// format: criterion_upload_<criterionID>
 	case strings.HasPrefix(data, "criterion_upload_"):
-		parts := strings.SplitN(strings.TrimPrefix(data, "criterion_upload_"), ":", 2)
-		criterionID := parts[0]
-		if len(parts) == 2 {
-			pendingAnalysis.Store(telegramUserID, parts[1])
-		}
+		criterionID := strings.TrimPrefix(data, "criterion_upload_")
 		h.sendText(chatID, fmt.Sprintf(
 			"Загрузите файл (PDF, фото анализов) в этот чат.\n\n(ID критерия: <code>%s</code>)\n\nОтправьте «отмена» чтобы сбросить все данные этого анализа.",
 			criterionID,

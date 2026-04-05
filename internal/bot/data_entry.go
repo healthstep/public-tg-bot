@@ -87,17 +87,21 @@ func (h *Handler) showCriteriaForAnalysis(ctx context.Context, chatID int64, ana
 
 	var rows [][]tgbotapi.InlineKeyboardButton
 	for _, c := range resp.GetCriteria() {
+		// Cache name so callback data stays under Telegram's 64-byte limit.
+		criterionNames.Store(c.GetId(), c.GetName())
+
 		levelIcon := criterionLevelIcon(int(c.GetLevel()))
 		label := levelIcon + " " + c.GetName()
 
-		// Embed analysisID in the callback so cancel works even from within criterion entry.
+		// Callbacks only carry criterionID (36 bytes + short prefix ≤ 54 bytes total).
+		// analysisID is retrieved from pendingAnalysis; name from criterionNames.
 		rows = append(rows,
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData(label+" — ввести значение", "criterion_manual_"+c.GetId()+":"+c.GetName()+":"+analysisID),
+				tgbotapi.NewInlineKeyboardButtonData(label+" — ввести значение", "criterion_manual_"+c.GetId()),
 			),
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData(label+" — отметить выполнение", "criterion_done_"+c.GetId()+":"+analysisID),
-				tgbotapi.NewInlineKeyboardButtonData("📎 загрузить файл", "criterion_upload_"+c.GetId()+":"+analysisID),
+				tgbotapi.NewInlineKeyboardButtonData(label+" — отметить выполнение", "criterion_done_"+c.GetId()),
+				tgbotapi.NewInlineKeyboardButtonData("📎 загрузить файл", "criterion_upload_"+c.GetId()),
 			),
 		)
 	}
