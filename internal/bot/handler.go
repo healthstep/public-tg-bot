@@ -142,8 +142,9 @@ func (h *Handler) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		h.handleAddData(ctx, msg)
 	case BtnProgress:
 		h.handleProgress(ctx, msg)
-	case BtnRecommendations:
-		h.handleRecommendations(ctx, msg)
+	case BtnWeeklyRecs:
+		telegramUserIDStr := fmt.Sprintf("%d", msg.From.ID)
+		h.handleWeeklyRecommendations(ctx, msg.Chat.ID, telegramUserIDStr)
 	default:
 		h.sendWithMainMenu(msg.Chat.ID, "Пожалуйста, выберите действие из меню.")
 	}

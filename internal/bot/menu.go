@@ -3,9 +3,9 @@ package bot
 import tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 const (
-	BtnAddData       = "➕ Добавить данные"
-	BtnProgress      = "📊 Мой прогресс"
-	BtnRecommendations = "💡 Рекомендации"
+	BtnAddData    = "➕ Добавить данные"
+	BtnProgress   = "📊 Мой прогресс"
+	BtnWeeklyRecs = "📅 Рекомендации недели"
 )
 
 func MainMenuKeyboard() tgbotapi.ReplyKeyboardMarkup {
@@ -15,7 +15,7 @@ func MainMenuKeyboard() tgbotapi.ReplyKeyboardMarkup {
 			tgbotapi.NewKeyboardButton(BtnProgress),
 		),
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton(BtnRecommendations),
+			tgbotapi.NewKeyboardButton(BtnWeeklyRecs),
 		),
 	)
 }

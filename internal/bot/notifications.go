@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -17,42 +16,6 @@ type NotificationPayload struct {
 	Body  string `json:"body"`
 }
 
-// handleRecommendations shows all current recommendations for the user.
-func (h *Handler) handleRecommendations(ctx context.Context, msg *tgbotapi.Message) {
-	telegramUserID := strconv.FormatInt(msg.From.ID, 10)
-	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
-	if err != nil || chat == nil || chat.UserID == nil {
-		h.sendText(msg.Chat.ID, "Вы не авторизованы. Перейдите по ссылке из приложения ЗдравоШаг.")
-		return
-	}
-
-	resp, err := h.healthClient.GetRecommendations(ctx, &healthpb.GetRecommendationsRequest{
-		UserId: chat.UserID.String(),
-	})
-	if err != nil {
-		log.Printf("get recommendations: %v", err)
-		h.sendText(msg.Chat.ID, "Не удалось загрузить рекомендации. Попробуйте позже.")
-		return
-	}
-
-	text := formatRecommendations(resp.GetRecommendations())
-
-	kb := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📅 Рекомендации недели", "show_weekly_recs"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("« Назад", "back_main"),
-		),
-	)
-
-	m := tgbotapi.NewMessage(msg.Chat.ID, text)
-	m.ParseMode = tgbotapi.ModeHTML
-	m.ReplyMarkup = kb
-	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send recommendations: %v", err)
-	}
-}
 
 // handleWeeklyRecommendations shows the user's weekly recommendation plan.
 func (h *Handler) handleWeeklyRecommendations(ctx context.Context, chatID int64, telegramUserID string) {
@@ -127,13 +90,12 @@ func formatWeeklyRecommendations(resp *healthpb.GetWeeklyRecommendationsResponse
 
 	for _, item := range items {
 		icon := recTypeIcon(item.GetType())
-		weight := item.GetWeight()
-		spent := weight == 0
-		prefix := ""
+		spent := item.GetWeight() == 0
 		if spent {
-			prefix = "~~"
+			b.WriteString(fmt.Sprintf("%s <s>%s</s>\n", icon, item.GetTitle()))
+		} else {
+			b.WriteString(fmt.Sprintf("%s <b>%s</b>\n", icon, item.GetTitle()))
 		}
-		b.WriteString(fmt.Sprintf("%s %s<b>%s</b>%s\n", icon, prefix, item.GetTitle(), prefix))
 		if item.GetCriterionName() != "" {
 			b.WriteString(fmt.Sprintf("   <i>%s</i>\n", item.GetCriterionName()))
 		}
