@@ -25,8 +25,11 @@ var pendingNumericInput sync.Map
 // callback data (Telegram limits callback_data to 64 bytes).
 var criterionNames sync.Map
 
-// criterionInputTypes caches criterionID -> inputType ("numeric" or "check").
+// criterionInputTypes caches criterionID -> inputType ("numeric", "check", "boolean").
 var criterionInputTypes sync.Map
+
+// criterionGroups caches groupID -> []*healthpb.Criterion for group-based navigation.
+var criterionGroups sync.Map
 
 type PendingInput struct {
 	CriterionID   string
@@ -155,10 +158,18 @@ func (h *Handler) handleCallback(ctx context.Context, cb *tgbotapi.CallbackQuery
 	telegramUserID := fmt.Sprintf("%d", cb.From.ID)
 
 	switch {
+	// User selects a group.
+	case strings.HasPrefix(data, "group_"):
+		groupID := strings.TrimPrefix(data, "group_")
+		h.handleGroupSelect(ctx, chatID, telegramUserID, groupID)
+
 	// User selects a criterion from the list.
 	case strings.HasPrefix(data, "criterion_select_"):
 		criterionID := strings.TrimPrefix(data, "criterion_select_")
 		h.handleCriterionSelect(ctx, chatID, telegramUserID, criterionID)
+
+	case data == "show_weekly_recs":
+		h.handleWeeklyRecommendations(ctx, cb.Message.Chat.ID, telegramUserID)
 
 	case data == "onboarding_next_1":
 		h.sendOnboardingStep2(chatID)

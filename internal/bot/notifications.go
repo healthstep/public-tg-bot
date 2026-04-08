@@ -37,11 +37,47 @@ func (h *Handler) handleRecommendations(ctx context.Context, msg *tgbotapi.Messa
 
 	text := formatRecommendations(resp.GetRecommendations())
 
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📅 Рекомендации недели", "show_weekly_recs"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("« Назад", "back_main"),
+		),
+	)
+
 	m := tgbotapi.NewMessage(msg.Chat.ID, text)
+	m.ParseMode = tgbotapi.ModeHTML
+	m.ReplyMarkup = kb
+	if _, err := h.bot.Send(m); err != nil {
+		log.Printf("send recommendations: %v", err)
+	}
+}
+
+// handleWeeklyRecommendations shows the user's weekly recommendation plan.
+func (h *Handler) handleWeeklyRecommendations(ctx context.Context, chatID int64, telegramUserID string) {
+	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
+	if err != nil || chat == nil || chat.UserID == nil {
+		h.sendText(chatID, "Вы не авторизованы.")
+		return
+	}
+
+	resp, err := h.healthClient.GetWeeklyRecommendations(ctx, &healthpb.GetWeeklyRecommendationsRequest{
+		UserId: chat.UserID.String(),
+	})
+	if err != nil {
+		log.Printf("get weekly recommendations: %v", err)
+		h.sendText(chatID, "Не удалось загрузить рекомендации на неделю. Попробуйте позже.")
+		return
+	}
+
+	text := formatWeeklyRecommendations(resp)
+
+	m := tgbotapi.NewMessage(chatID, text)
 	m.ParseMode = tgbotapi.ModeHTML
 	m.ReplyMarkup = BackToMainInlineKeyboard()
 	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send recommendations: %v", err)
+		log.Printf("send weekly recommendations: %v", err)
 	}
 }
 
@@ -74,6 +110,46 @@ func severityEmoji(severity string) string {
 		return "⚠️"
 	case "ok":
 		return "✅"
+	default:
+		return "💡"
+	}
+}
+
+func formatWeeklyRecommendations(resp *healthpb.GetWeeklyRecommendationsResponse) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("<b>📅 Рекомендации на неделю</b> (с %s)\n\n", resp.GetWeekStart()))
+
+	items := resp.GetItems()
+	if len(items) == 0 {
+		b.WriteString("🎉 На эту неделю рекомендаций нет — все показатели в норме!")
+		return b.String()
+	}
+
+	for _, item := range items {
+		icon := recTypeIcon(item.GetType())
+		weight := item.GetWeight()
+		spent := weight == 0
+		prefix := ""
+		if spent {
+			prefix = "~~"
+		}
+		b.WriteString(fmt.Sprintf("%s %s<b>%s</b>%s\n", icon, prefix, item.GetTitle(), prefix))
+		if item.GetCriterionName() != "" {
+			b.WriteString(fmt.Sprintf("   <i>%s</i>\n", item.GetCriterionName()))
+		}
+	}
+
+	return b.String()
+}
+
+func recTypeIcon(t string) string {
+	switch t {
+	case "reminder":
+		return "🔔"
+	case "alarm":
+		return "🚨"
+	case "expiration_reminder":
+		return "⏰"
 	default:
 		return "💡"
 	}
