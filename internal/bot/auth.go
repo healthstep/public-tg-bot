@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/google/uuid"
@@ -86,6 +87,43 @@ func (h *Handler) handleRegistration(ctx context.Context, msg *tgbotapi.Message,
 	h.requestPhone(msg.Chat.ID)
 }
 
+// handlePasswordCommand lets a registered user change their password.
+// Usage: /password <newpassword>
+func (h *Handler) handlePasswordCommand(ctx context.Context, msg *tgbotapi.Message) {
+	telegramUserID := strconv.FormatInt(msg.From.ID, 10)
+	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
+	if err != nil || chat == nil || chat.UserID == nil {
+		h.sendText(msg.Chat.ID, "Вы не авторизованы. Пройдите регистрацию через ссылку из приложения.")
+		return
+	}
+
+	text := strings.TrimSpace(msg.Text)
+	parts := strings.SplitN(text, " ", 2)
+	if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
+		h.sendText(msg.Chat.ID,
+			"Чтобы задать новый пароль, отправьте:\n\n<code>/password НовыйПароль</code>\n\nМинимум 8 символов.")
+		return
+	}
+
+	newPassword := strings.TrimSpace(parts[1])
+	if len(newPassword) < 8 {
+		h.sendText(msg.Chat.ID, "Пароль должен содержать минимум 8 символов.")
+		return
+	}
+
+	_, err = h.usersClient.ChangePassword(ctx, &userspb.ChangePasswordRequest{
+		UserId:      chat.UserID.String(),
+		NewPassword: newPassword,
+	})
+	if err != nil {
+		log.Printf("change password for %s: %v", chat.UserID, err)
+		h.sendText(msg.Chat.ID, "Не удалось изменить пароль. Попробуйте позже.")
+		return
+	}
+
+	h.sendText(msg.Chat.ID, "✅ Пароль успешно изменён! Используйте его для входа на сайт.")
+}
+
 func (h *Handler) requestPhone(chatID int64) {
 	text := "Для завершения регистрации поделитесь номером телефона.\n\n" +
 		"Нажмите кнопку ниже:"
@@ -160,9 +198,17 @@ func (h *Handler) handlePhoneShared(ctx context.Context, msg *tgbotapi.Message) 
 	}
 
 	text := "Регистрация завершена! Добро пожаловать в ЗдравоШаг. 🎉"
+
+	if resp.GetInitialPassword() != "" {
+		text += fmt.Sprintf("\n\n🔑 <b>Ваш пароль для входа на сайт:</b> <code>%s</code>\nСохраните его! Изменить: /password", resp.GetInitialPassword())
+	}
+
 	if h.siteURL != "" && resp.GetToken() != "" {
 		loginURL := h.siteURL + "/auth?token=" + resp.GetToken()
-		text += fmt.Sprintf("\n\n🌐 <a href=\"%s\">Войти на сайт одним нажатием</a>", loginURL)
+		text += fmt.Sprintf("\n\n🌐 <a href=\"%s\">Войти на сайт</a>", loginURL)
+	} else if h.siteURL != "" {
+		text += "\n\n🌐 " + h.siteURL
 	}
+
 	h.sendWithMainMenu(msg.Chat.ID, text)
 }

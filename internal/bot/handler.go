@@ -135,6 +135,9 @@ func (h *Handler) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 			h.handleStartNoKey(ctx, msg)
 		}
 		return
+	case strings.HasPrefix(text, "/password"):
+		h.handlePasswordCommand(ctx, msg)
+		return
 	}
 
 	switch text {
