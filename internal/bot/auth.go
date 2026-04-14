@@ -197,18 +197,25 @@ func (h *Handler) handlePhoneShared(ctx context.Context, msg *tgbotapi.Message) 
 		log.Printf("update user id: %v", err)
 	}
 
-	text := "Регистрация завершена! Добро пожаловать в ЗдравоШаг. 🎉"
+	text := "✅ Регистрация завершена! Добро пожаловать в ЗОШ."
 
 	if resp.GetInitialPassword() != "" {
-		text += fmt.Sprintf("\n\n🔑 <b>Ваш пароль для входа на сайт:</b> <code>%s</code>\nСохраните его! Изменить: /password", resp.GetInitialPassword())
+		text += fmt.Sprintf("\n\n🔑 <b>Ваш пароль для входа на сайт:</b> <code>%s</code>\n\nСохраните его! Изменить пароль: /password", resp.GetInitialPassword())
 	}
 
 	if h.siteURL != "" && resp.GetToken() != "" {
 		loginURL := h.siteURL + "/auth?token=" + resp.GetToken()
-		text += fmt.Sprintf("\n\n🌐 <a href=\"%s\">Войти на сайт</a>", loginURL)
+		text += fmt.Sprintf("\n\n🌐 <a href=\"%s\">Войти на сайт одним нажатием</a>", loginURL)
 	} else if h.siteURL != "" {
 		text += "\n\n🌐 " + h.siteURL
 	}
 
-	h.sendWithMainMenu(msg.Chat.ID, text)
+	// Send welcome with password first, then start onboarding for new accounts.
+	h.sendText(msg.Chat.ID, text)
+	if resp.GetInitialPassword() != "" {
+		// New account — ask for gender and date of birth before showing the menu.
+		h.sendOnboardingStep1(msg.Chat.ID)
+	} else {
+		h.sendWithMainMenu(msg.Chat.ID, "")
+	}
 }
