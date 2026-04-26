@@ -148,6 +148,8 @@ func (h *Handler) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 	case BtnWeeklyRecs:
 		telegramUserIDStr := fmt.Sprintf("%d", msg.From.ID)
 		h.handleWeeklyRecommendations(ctx, msg.Chat.ID, telegramUserIDStr)
+	case BtnUploadAnalyses:
+		h.handleUploadAnalyses(msg.Chat.ID)
 	default:
 		h.sendWithMainMenu(msg.Chat.ID, "Пожалуйста, выберите действие из меню.")
 	}
