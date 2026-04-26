@@ -3,12 +3,13 @@ package bot
 import (
 	"context"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	healthpb "github.com/helthtech/core-health/pkg/proto/health"
+	"github.com/helthtech/public-tg-bot/internal/obs"
+	"github.com/porebric/logger"
 )
 
 func (h *Handler) handleProgress(ctx context.Context, msg *tgbotapi.Message) {
@@ -24,7 +25,7 @@ func (h *Handler) handleProgress(ctx context.Context, msg *tgbotapi.Message) {
 	// Get progress stats.
 	prog, err := h.healthClient.GetProgress(ctx, &healthpb.GetProgressRequest{UserId: userID})
 	if err != nil {
-		log.Printf("get progress: %v", err)
+		logger.Error(ctx, err, "get progress")
 		h.sendText(msg.Chat.ID, "Не удалось загрузить прогресс. Попробуйте позже.")
 		return
 	}
@@ -32,7 +33,7 @@ func (h *Handler) handleProgress(ctx context.Context, msg *tgbotapi.Message) {
 	// Get all criteria with user values.
 	criteria, err := h.healthClient.GetUserCriteria(ctx, &healthpb.GetUserCriteriaRequest{UserId: userID})
 	if err != nil {
-		log.Printf("get user criteria: %v", err)
+		logger.Error(ctx, err, "get user criteria")
 		h.sendText(msg.Chat.ID, "Не удалось загрузить данные. Попробуйте позже.")
 		return
 	}
@@ -43,7 +44,7 @@ func (h *Handler) handleProgress(ctx context.Context, msg *tgbotapi.Message) {
 	m.ParseMode = tgbotapi.ModeHTML
 	m.ReplyMarkup = BackToMainInlineKeyboard()
 	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send progress: %v", err)
+		obs.BG("tg").Error(err, "send progress")
 	}
 }
 

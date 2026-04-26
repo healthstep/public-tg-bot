@@ -3,14 +3,15 @@ package boot
 import (
 	"context"
 	"fmt"
-	"log"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	healthpb "github.com/helthtech/core-health/pkg/proto/health"
 	userspb "github.com/helthtech/core-users/pkg/proto/users"
 	"github.com/helthtech/public-tg-bot/internal/bot"
+	"github.com/helthtech/public-tg-bot/internal/middleware"
 	"github.com/helthtech/public-tg-bot/internal/migration"
 	"github.com/helthtech/public-tg-bot/internal/natshandler"
+	"github.com/helthtech/public-tg-bot/internal/obs"
 	"github.com/helthtech/public-tg-bot/internal/repository"
 	"github.com/nats-io/nats.go"
 	"github.com/porebric/configs"
@@ -60,7 +61,7 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("telegram bot: %w", err)
 	}
-	log.Printf("authorized on telegram as %s", tgBot.Self.UserName)
+	obs.L.Info("telegram bot authorized", "bot_user", tgBot.Self.UserName)
 
 	webhookHost := configs.Value(ctx, "tg_webhook_host").String()
 	webhookURL := fmt.Sprintf("%s/tg/%s", webhookHost, botToken)
@@ -71,7 +72,7 @@ func Run(ctx context.Context) error {
 	if _, err := tgBot.Request(wh); err != nil {
 		return fmt.Errorf("set webhook: %w", err)
 	}
-	log.Printf("webhook set to %s/tg/***", webhookHost)
+	obs.L.Info("telegram webhook set", "host", webhookHost)
 
 	siteURL := configs.Value(ctx, "site_url").String()
 	chatRepo := repository.NewChatRepository(db)
@@ -83,11 +84,11 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("nats subscribe: %w", err)
 	}
 
-	l := logger.New(logger.InfoLevel)
-	router := resty.NewRouter(func() *logger.Logger { return l }, nil)
+	router := resty.NewRouter(func() *logger.Logger { return obs.L }, nil)
+	router.MuxRouter().Use(middleware.AccessLog())
 	router.MuxRouter().HandleFunc("/tg/{token}", handler.WebhookHTTP).Methods("POST")
 
-	log.Println("public-tg-bot starting")
+	obs.L.Info("public-tg-bot starting")
 	resty.RunServer(ctx, router, func(ctx context.Context) error {
 		usersConn.Close()
 		healthConn.Close()

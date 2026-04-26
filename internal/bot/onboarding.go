@@ -2,9 +2,9 @@ package bot
 
 import (
 	"context"
-	"log"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/helthtech/public-tg-bot/internal/obs"
 )
 
 func (h *Handler) handleStartNoKey(ctx context.Context, msg *tgbotapi.Message) {
@@ -30,7 +30,7 @@ func (h *Handler) sendOnboardingStep1(chatID int64) {
 	m.ParseMode = tgbotapi.ModeHTML
 	m.ReplyMarkup = kb
 	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send onboarding step 1: %v", err)
+		obs.BG("onboarding").Error(err, "send onboarding step 1")
 	}
 }
 
@@ -53,7 +53,7 @@ func (h *Handler) sendOnboardingStep2(chatID int64) {
 	m.ParseMode = tgbotapi.ModeHTML
 	m.ReplyMarkup = kb
 	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send onboarding step 2: %v", err)
+		obs.BG("onboarding").Error(err, "send onboarding step 2")
 	}
 }
 
@@ -74,6 +74,6 @@ func (h *Handler) sendOnboardingStep3(chatID int64) {
 	m.ParseMode = tgbotapi.ModeHTML
 	m.ReplyMarkup = kb
 	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send onboarding step 3: %v", err)
+		obs.BG("onboarding").Error(err, "send onboarding step 3")
 	}
 }

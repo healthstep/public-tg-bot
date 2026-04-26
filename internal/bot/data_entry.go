@@ -3,13 +3,14 @@ package bot
 import (
 	"context"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	healthpb "github.com/helthtech/core-health/pkg/proto/health"
 	userspb "github.com/helthtech/core-users/pkg/proto/users"
+	"github.com/helthtech/public-tg-bot/internal/obs"
+	"github.com/porebric/logger"
 )
 
 // getUserSex resolves the user's sex from core-users for the given Telegram user.
@@ -39,7 +40,7 @@ func (h *Handler) handleAddData(ctx context.Context, msg *tgbotapi.Message) {
 	// Fetch groups.
 	groupResp, err := h.healthClient.ListGroups(ctx, &healthpb.ListGroupsRequest{})
 	if err != nil {
-		log.Printf("list groups: %v", err)
+		logger.Error(ctx, err, "list groups")
 	}
 
 	// Fetch all criteria with user values.
@@ -48,7 +49,7 @@ func (h *Handler) handleAddData(ctx context.Context, msg *tgbotapi.Message) {
 		UserSex: userSex,
 	})
 	if err != nil {
-		log.Printf("list criteria: %v", err)
+		logger.Error(ctx, err, "list criteria")
 		h.sendText(msg.Chat.ID, "Не удалось загрузить список показателей. Попробуйте позже.")
 		return
 	}
@@ -130,7 +131,7 @@ func (h *Handler) handleAddData(ctx context.Context, msg *tgbotapi.Message) {
 	m.ParseMode = tgbotapi.ModeHTML
 	m.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
 	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send groups list: %v", err)
+		logger.Error(ctx, err, "send groups list")
 	}
 }
 
@@ -179,7 +180,7 @@ func (h *Handler) handleGroupSelect(ctx context.Context, chatID int64, telegramU
 	m.ParseMode = tgbotapi.ModeHTML
 	m.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
 	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send group criteria list: %v", err)
+		logger.Error(ctx, err, "send group criteria list")
 	}
 }
 
@@ -207,7 +208,7 @@ func (h *Handler) showFlatCriteriaList(chatID int64, criteria []*healthpb.Criter
 	m.ParseMode = tgbotapi.ModeHTML
 	m.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
 	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send criteria list: %v", err)
+		obs.BG("tg").Error(err, "send criteria list")
 	}
 }
 
@@ -261,7 +262,7 @@ func (h *Handler) handleCancelAll(ctx context.Context, msg *tgbotapi.Message) {
 		UserId: chat.UserID.String(),
 	})
 	if err != nil {
-		log.Printf("reset criteria: %v", err)
+		logger.Error(ctx, err, "reset criteria")
 		h.sendText(msg.Chat.ID, "Не удалось сбросить данные. Попробуйте позже.")
 		return
 	}
@@ -322,7 +323,7 @@ func (h *Handler) handleUserInput(ctx context.Context, msg *tgbotapi.Message, pe
 		Source:      "telegram",
 	})
 	if err != nil {
-		log.Printf("set user criterion: %v", err)
+		logger.Error(ctx, err, "set user criterion")
 		h.sendText(chatID, "Не удалось сохранить значение. Попробуйте позже.")
 		return
 	}

@@ -3,7 +3,6 @@ package bot
 import (
 	"context"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 
@@ -11,6 +10,8 @@ import (
 	"github.com/google/uuid"
 	userspb "github.com/helthtech/core-users/pkg/proto/users"
 	"github.com/helthtech/public-tg-bot/internal/model"
+	"github.com/helthtech/public-tg-bot/internal/obs"
+	"github.com/porebric/logger"
 )
 
 func (h *Handler) handleStartWithKey(ctx context.Context, msg *tgbotapi.Message, key string) {
@@ -34,7 +35,7 @@ func (h *Handler) handleStartWithKey(ctx context.Context, msg *tgbotapi.Message,
 func (h *Handler) handleLogin(ctx context.Context, msg *tgbotapi.Message, chat *model.Chat, authKey string) {
 	userResp, err := h.usersClient.GetUser(ctx, &userspb.GetUserRequest{UserId: chat.UserID.String()})
 	if err != nil {
-		log.Printf("get user for login: %v", err)
+		logger.Error(ctx, err, "get user for login")
 		h.sendText(msg.Chat.ID, "Произошла ошибка. Попробуйте позже.")
 		return
 	}
@@ -45,7 +46,7 @@ func (h *Handler) handleLogin(ctx context.Context, msg *tgbotapi.Message, chat *
 		Platform:  "telegram",
 	})
 	if err != nil {
-		log.Printf("login verify phone: %v", err)
+		logger.Error(ctx, err, "login verify phone")
 		h.sendText(msg.Chat.ID, "Произошла ошибка. Попробуйте позже.")
 		return
 	}
@@ -61,7 +62,7 @@ func (h *Handler) handleLogin(ctx context.Context, msg *tgbotapi.Message, chat *
 func (h *Handler) handleRegistration(ctx context.Context, msg *tgbotapi.Message, provisionalUserID string, authKey string) {
 	provID, err := uuid.Parse(provisionalUserID)
 	if err != nil {
-		log.Printf("parse provisional user id: %v", err)
+		logger.Error(ctx, err, "parse provisional user id")
 		h.sendText(msg.Chat.ID, "Произошла ошибка. Попробуйте позже.")
 		return
 	}
@@ -78,7 +79,7 @@ func (h *Handler) handleRegistration(ctx context.Context, msg *tgbotapi.Message,
 	}
 
 	if err := h.chatRepo.Upsert(ctx, chat); err != nil {
-		log.Printf("upsert chat: %v", err)
+		logger.Error(ctx, err, "upsert chat")
 		h.sendText(msg.Chat.ID, "Произошла ошибка. Попробуйте позже.")
 		return
 	}
@@ -116,7 +117,7 @@ func (h *Handler) handlePasswordCommand(ctx context.Context, msg *tgbotapi.Messa
 		NewPassword: newPassword,
 	})
 	if err != nil {
-		log.Printf("change password for %s: %v", chat.UserID, err)
+		logger.Error(ctx, err, "change password", "user_id", chat.UserID)
 		h.sendText(msg.Chat.ID, "Не удалось изменить пароль. Попробуйте позже.")
 		return
 	}
@@ -138,7 +139,7 @@ func (h *Handler) requestPhone(chatID int64) {
 	m := tgbotapi.NewMessage(chatID, text)
 	m.ReplyMarkup = kb
 	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send phone request: %v", err)
+		obs.BG("tg").Error(err, "send phone request")
 	}
 }
 
@@ -181,20 +182,20 @@ func (h *Handler) handlePhoneShared(ctx context.Context, msg *tgbotapi.Message) 
 		Platform:          "telegram",
 	})
 	if err != nil {
-		log.Printf("verify phone: %v", err)
+		logger.Error(ctx, err, "verify phone")
 		h.sendText(msg.Chat.ID, "Ошибка верификации. Попробуйте позже.")
 		return
 	}
 
 	userID, err := uuid.Parse(resp.GetUserId())
 	if err != nil {
-		log.Printf("parse user id: %v", err)
+		logger.Error(ctx, err, "parse user id")
 		h.sendText(msg.Chat.ID, "Произошла ошибка. Попробуйте позже.")
 		return
 	}
 
 	if err := h.chatRepo.UpdateUserID(ctx, telegramUserID, userID); err != nil {
-		log.Printf("update user id: %v", err)
+		logger.Error(ctx, err, "update user id")
 	}
 
 	text := "✅ Регистрация завершена! Добро пожаловать в ЗОШ."
@@ -210,10 +211,8 @@ func (h *Handler) handlePhoneShared(ctx context.Context, msg *tgbotapi.Message) 
 		text += "\n\n🌐 " + h.siteURL
 	}
 
-	// Send welcome with password first, then start onboarding for new accounts.
 	h.sendText(msg.Chat.ID, text)
 	if resp.GetInitialPassword() != "" {
-		// New account — ask for gender and date of birth before showing the menu.
 		h.sendOnboardingStep1(msg.Chat.ID)
 	} else {
 		h.sendWithMainMenu(msg.Chat.ID, "")

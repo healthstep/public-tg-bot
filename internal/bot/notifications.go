@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	healthpb "github.com/helthtech/core-health/pkg/proto/health"
+	"github.com/helthtech/public-tg-bot/internal/obs"
+	"github.com/porebric/logger"
 )
 
 type NotificationPayload struct {
@@ -29,7 +30,7 @@ func (h *Handler) handleWeeklyRecommendations(ctx context.Context, chatID int64,
 		UserId: chat.UserID.String(),
 	})
 	if err != nil {
-		log.Printf("get weekly recommendations: %v", err)
+		logger.Error(ctx, err, "get weekly recommendations")
 		h.sendText(chatID, "Не удалось загрузить рекомендации на неделю. Попробуйте позже.")
 		return
 	}
@@ -40,7 +41,7 @@ func (h *Handler) handleWeeklyRecommendations(ctx context.Context, chatID int64,
 	m.ParseMode = tgbotapi.ModeHTML
 	m.ReplyMarkup = BackToMainInlineKeyboard()
 	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send weekly recommendations: %v", err)
+		obs.BG("tg").Error(err, "send weekly recommendations")
 	}
 }
 
@@ -121,7 +122,7 @@ func recTypeIcon(t string) string {
 func (h *Handler) SendNotification(chatID int64, templateCode string, payloadJSON string) {
 	var payload NotificationPayload
 	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
-		log.Printf("unmarshal notification payload: %v", err)
+		obs.BG("notification").Error(err, "unmarshal notification payload")
 		return
 	}
 
@@ -130,7 +131,9 @@ func (h *Handler) SendNotification(chatID int64, templateCode string, payloadJSO
 	m := tgbotapi.NewMessage(chatID, text)
 	m.ParseMode = tgbotapi.ModeHTML
 	if _, err := h.bot.Send(m); err != nil {
-		log.Printf("send notification: %v", err)
+		obs.BG("notification").Error(err, "send notification", "chat_id", chatID, "template", templateCode)
+	} else {
+		obs.BG("notification").Info("send notification", "chat_id", chatID, "template", templateCode)
 	}
 }
 

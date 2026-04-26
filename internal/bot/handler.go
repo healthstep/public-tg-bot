@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -14,7 +13,9 @@ import (
 	"github.com/gorilla/mux"
 	healthpb "github.com/helthtech/core-health/pkg/proto/health"
 	userspb "github.com/helthtech/core-users/pkg/proto/users"
+	"github.com/helthtech/public-tg-bot/internal/obs"
 	"github.com/helthtech/public-tg-bot/internal/repository"
+	"github.com/porebric/logger"
 )
 
 // pendingNumericInput stores users waiting to type a criterion value.
@@ -67,31 +68,37 @@ func NewHandler(
 
 func (h *Handler) WebhookHTTP(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
+	ctx := obs.WithTrace(r.Context())
 	if vars["token"] != h.botToken {
+		logger.Warn(ctx, "tg webhook: forbidden token")
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		logger.Error(ctx, err, "tg webhook: read body")
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 
 	var update tgbotapi.Update
 	if err := json.Unmarshal(body, &update); err != nil {
+		logger.Error(ctx, err, "tg webhook: unmarshal", "body_len", len(body))
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	logger.Info(ctx, "tg webhook: update", "update_id", update.UpdateID, "body_len", len(body),
+		"has_message", update.Message != nil, "has_callback", update.CallbackQuery != nil)
 
-	h.handleUpdate(r.Context(), &update)
+	h.handleUpdate(ctx, &update)
 	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) handleUpdate(ctx context.Context, update *tgbotapi.Update) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("panic in handleUpdate: %v", r)
+			logger.Error(ctx, fmt.Errorf("%v", r), "tg handleUpdate panic", "recovered", r)
 		}
 	}()
 
@@ -197,7 +204,7 @@ func (h *Handler) sendText(chatID int64, text string) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = tgbotapi.ModeHTML
 	if _, err := h.bot.Send(msg); err != nil {
-		log.Printf("send message error: %v", err)
+		obs.BG("tg").Error(err, "tg sendText", "chat_id", chatID)
 	}
 }
 
@@ -206,6 +213,6 @@ func (h *Handler) sendWithMainMenu(chatID int64, text string) {
 	msg.ParseMode = tgbotapi.ModeHTML
 	msg.ReplyMarkup = MainMenuKeyboard()
 	if _, err := h.bot.Send(msg); err != nil {
-		log.Printf("send message error: %v", err)
+		obs.BG("tg").Error(err, "tg sendText", "chat_id", chatID)
 	}
 }
