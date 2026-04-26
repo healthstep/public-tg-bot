@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"fmt"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/helthtech/public-tg-bot/internal/obs"
@@ -9,6 +10,7 @@ import (
 
 func (h *Handler) handleStartNoKey(ctx context.Context, msg *tgbotapi.Message) {
 	_ = ctx
+	h.clearLabUpload(fmt.Sprintf("%d", msg.From.ID))
 	h.sendOnboardingStep1(msg.Chat.ID)
 }
 

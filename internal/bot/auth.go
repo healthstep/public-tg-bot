@@ -22,6 +22,7 @@ func (h *Handler) handleStartWithKey(ctx context.Context, msg *tgbotapi.Message,
 	}
 
 	telegramUserID := strconv.FormatInt(msg.From.ID, 10)
+	h.clearLabUpload(telegramUserID)
 
 	existing, _ := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
 	if existing != nil && existing.UserID != nil {

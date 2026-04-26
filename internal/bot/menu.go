@@ -1,6 +1,11 @@
 package bot
 
-import tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+import (
+	"context"
+	"fmt"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+)
 
 const (
 	BtnAddData        = "➕ Добавить данные"
@@ -36,13 +41,7 @@ func (h *Handler) sendMainMenu(chatID int64) {
 	h.sendWithMainMenu(chatID, "Главное меню ЗдравоШаг.\nВыберите действие:")
 }
 
-func (h *Handler) handleUploadAnalyses(chatID int64) {
-	var text string
-	if h.siteURL != "" {
-		u := h.siteURL + "/profile"
-		text = "Загрузите PDF с анализами (до 5 файлов) в <b>личном кабинете</b> — раздел «Профиль».\n\n<a href=\"" + u + "\">Открыть профиль</a>"
-	} else {
-		text = "Загрузка анализов доступна в личном кабинете на сайте ЗдравоШаг: раздел «Профиль» — «Загрузить анализы»."
-	}
-	h.sendWithMainMenu(chatID, text)
+func (h *Handler) handleUploadAnalyses(ctx context.Context, msg *tgbotapi.Message) {
+	telegramUserID := fmt.Sprintf("%d", msg.From.ID)
+	h.startLabUploadFromMenu(ctx, msg.Chat.ID, telegramUserID)
 }

@@ -20,6 +20,7 @@ type NotificationPayload struct {
 
 // handleWeeklyRecommendations shows the user's weekly recommendation plan.
 func (h *Handler) handleWeeklyRecommendations(ctx context.Context, chatID int64, telegramUserID string) {
+	h.clearLabUpload(telegramUserID)
 	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
 	if err != nil || chat == nil || chat.UserID == nil {
 		h.sendText(chatID, "Вы не авторизованы.")

@@ -29,6 +29,7 @@ func (h *Handler) getUserSex(ctx context.Context, telegramUserID string) string 
 // handleAddData shows the list of criteria groups.
 func (h *Handler) handleAddData(ctx context.Context, msg *tgbotapi.Message) {
 	telegramUserID := fmt.Sprintf("%d", msg.From.ID)
+	h.clearLabUpload(telegramUserID)
 	userSex := h.getUserSex(ctx, telegramUserID)
 
 	chat, _ := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
@@ -253,6 +254,7 @@ func (h *Handler) handleCriterionSelect(ctx context.Context, chatID int64, teleg
 // handleCancelAll resets all user criteria.
 func (h *Handler) handleCancelAll(ctx context.Context, msg *tgbotapi.Message) {
 	telegramUserID := fmt.Sprintf("%d", msg.From.ID)
+	h.clearLabUpload(telegramUserID)
 	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
 	if err != nil || chat == nil || chat.UserID == nil {
 		h.sendText(msg.Chat.ID, "Вы не авторизованы.")

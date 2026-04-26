@@ -14,6 +14,7 @@ import (
 
 func (h *Handler) handleProgress(ctx context.Context, msg *tgbotapi.Message) {
 	telegramUserID := strconv.FormatInt(msg.From.ID, 10)
+	h.clearLabUpload(telegramUserID)
 	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
 	if err != nil || chat == nil || chat.UserID == nil {
 		h.sendText(msg.Chat.ID, "Вы не авторизованы. Перейдите по ссылке из приложения ЗдравоШаг.")
