@@ -128,7 +128,9 @@ func (h *Handler) handleAddData(ctx context.Context, msg *tgbotapi.Message) {
 	))
 
 	m := tgbotapi.NewMessage(msg.Chat.ID,
-		"➕ <b>Добавить данные</b>\n\nВыберите группу показателей:\n\n<i>Введите «отмена» в любой момент, чтобы сбросить все ваши данные.</i>")
+		"➕ <b>Добавить данные</b>\n\n"+
+			"📄 В этот же чат можно просто отправить <b>PDF</b> с анализами (до 5 за раз) — бот извлечёт показатели; подтвердите или отклоните, как в личном кабинете на сайте.\n\n"+
+			"Выберите группу показателей:\n\n<i>Введите «отмена» в любой момент, чтобы сбросить все ваши данные.</i>")
 	m.ParseMode = tgbotapi.ModeHTML
 	m.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
 	if _, err := h.bot.Send(m); err != nil {
@@ -205,7 +207,9 @@ func (h *Handler) showFlatCriteriaList(chatID int64, criteria []*healthpb.Criter
 		tgbotapi.NewInlineKeyboardButtonData("« Назад", "back_main"),
 	))
 	m := tgbotapi.NewMessage(chatID,
-		"➕ <b>Добавить данные</b>\n\nВыберите показатель:\n\n<i>Введите «отмена» в любой момент, чтобы сбросить все ваши данные.</i>")
+		"➕ <b>Добавить данные</b>\n\n"+
+			"📄 Сюда же можно отправить <b>PDF</b> с анализами — бот обработает их без выбора в меню (до 5 за раз).\n\n"+
+			"Выберите показатель:\n\n<i>Введите «отмена» в любой момент, чтобы сбросить все ваши данные.</i>")
 	m.ParseMode = tgbotapi.ModeHTML
 	m.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
 	if _, err := h.bot.Send(m); err != nil {

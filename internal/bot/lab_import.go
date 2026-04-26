@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	healthpb "github.com/helthtech/core-health/pkg/proto/health"
@@ -17,19 +18,22 @@ import (
 )
 
 const maxLabFiles = 5
+const tgLabDebounce = 2 * time.Second
 
-// pendingLabCollect: telegram user id -> *labCollectState
-var pendingLabCollect sync.Map
-
-// pendingLabImport blocks concurrent imports per user.
-var pendingLabImport sync.Map
-
-// labConfirmPendingID: telegram user id -> pending import id (short-lived, for inline buttons)
+// Ожидает подтверждения по кнопкам lab_yes / lab_no
 var labConfirmPendingID sync.Map
 
-type labCollectState struct {
-	ChatID int64
-	Files  []rawLabFile
+// Пока идёт gRPC ImportCriteriaFromPdf
+var pendingLabImport sync.Map
+
+// tgLabBatches: дебаунс — несколько PDF подряд объединяются (до 5) и обрабатываются одной загрузкой.
+var tgLabBatches sync.Map
+
+type tgLabBatchState struct {
+	mu     sync.Mutex
+	files  []rawLabFile
+	chatID int64
+	timer  *time.Timer
 }
 
 type rawLabFile struct {
@@ -38,76 +42,115 @@ type rawLabFile struct {
 }
 
 func (h *Handler) clearLabUpload(telegramUserID string) {
-	pendingLabCollect.Delete(telegramUserID)
 	labConfirmPendingID.Delete(telegramUserID)
+	cancelTgLabBatch(telegramUserID)
 }
 
-func (h *Handler) startLabUploadFromMenu(ctx context.Context, chatID int64, telegramUserID string) {
-	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
-	if err != nil || chat == nil || chat.UserID == nil {
-		h.sendText(chatID, "Сначала зарегистрируйтесь через <b>/start</b>.")
+func cancelTgLabBatch(telegramUserID string) {
+	v, ok := tgLabBatches.Load(telegramUserID)
+	if !ok {
 		return
 	}
-	h.clearLabUpload(telegramUserID)
-	pendingLabCollect.Store(telegramUserID, &labCollectState{ChatID: chatID, Files: nil})
-	text := "📄 <b>Загрузка анализов (PDF)</b>\n\n" +
-		"Отправьте в чат до " + fmt.Sprintf("%d", maxLabFiles) + " PDF-файлов (по одному в сообщении или по очереди).\n\n" +
-		"Когда закончите — нажмите <b>«Готово»</b> или напишите «готово»."
-	kb := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Готово", "lab_done"),
-			tgbotapi.NewInlineKeyboardButtonData("◀️ Отмена", "lab_cancel"),
-		),
-	)
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = tgbotapi.ModeHTML
-	msg.ReplyMarkup = kb
-	if _, err := h.bot.Send(msg); err != nil {
-		obs.BG("tg").Error(err, "startLabUpload", "chat_id", chatID)
+	st := v.(*tgLabBatchState)
+	st.mu.Lock()
+	if st.timer != nil {
+		st.timer.Stop()
 	}
+	st.mu.Unlock()
+	tgLabBatches.Delete(telegramUserID)
 }
 
-func (h *Handler) handleLabDocumentMessage(ctx context.Context, msg *tgbotapi.Message) bool {
+// handleAnyLabDocument: любой PDF в чат (без пункта меню) — в очередь, через debounce — ImportCriteriaFromPdf.
+func (h *Handler) handleAnyLabDocument(ctx context.Context, msg *tgbotapi.Message) bool {
+	if msg == nil || msg.Document == nil {
+		return false
+	}
 	telegramUserID := fmt.Sprintf("%d", msg.From.ID)
-	if msg.Document == nil {
-		return false
-	}
-	v, ok := pendingLabCollect.Load(telegramUserID)
-	if !ok {
-		return false
-	}
-	st := v.(*labCollectState)
-	if st.ChatID != msg.Chat.ID {
-		return false
-	}
-	if len(st.Files) >= maxLabFiles {
-		h.sendText(msg.Chat.ID, fmt.Sprintf("Уже получено максимум %d файлов. Нажмите «Готово» или «Отмена».", maxLabFiles))
+
+	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
+	if err != nil || chat == nil || chat.UserID == nil {
+		h.sendText(msg.Chat.ID, "Сначала зарегистрируйтесь через <b>/start</b>.")
 		return true
 	}
+	_ = chat
+
 	mime := strings.ToLower(msg.Document.MimeType)
 	name := msg.Document.FileName
 	if name == "" {
 		name = "file.pdf"
 	}
 	if !strings.HasSuffix(strings.ToLower(name), ".pdf") && mime != "application/pdf" && !strings.HasPrefix(mime, "application/x-pdf") {
-		h.sendText(msg.Chat.ID, "Нужен файл в формате PDF. Отправьте PDF или нажмите «Отмена».")
+		h.sendText(msg.Chat.ID, "Нужен файл в формате <b>PDF</b> (анализ).")
 		return true
 	}
 	if _, busy := pendingLabImport.Load(telegramUserID); busy {
-		h.sendText(msg.Chat.ID, "Дождитесь окончания обработки предыдущей загрузки.")
+		h.sendText(msg.Chat.ID, "Дождитесь окончания предыдущей обработки.")
 		return true
 	}
+
 	data, err := h.downloadTelegramFile(ctx, msg.Document.FileID)
 	if err != nil {
 		logger.Error(ctx, err, "tg download lab pdf")
 		h.sendText(msg.Chat.ID, "Не удалось скачать файл. Попробуйте ещё раз.")
 		return true
 	}
-	st.Files = append(st.Files, rawLabFile{Name: name, Data: data})
-	pendingLabCollect.Store(telegramUserID, st)
-	n := len(st.Files)
-	h.sendText(msg.Chat.ID, fmt.Sprintf("Принято: <b>%s</b> (%d/%d)", tgbotapi.EscapeText(tgbotapi.ModeHTML, name), n, maxLabFiles))
+	f := rawLabFile{Name: name, Data: data}
+
+	v, _ := tgLabBatches.LoadOrStore(telegramUserID, &tgLabBatchState{})
+	st := v.(*tgLabBatchState)
+	st.mu.Lock()
+	if st.chatID == 0 {
+		st.chatID = msg.Chat.ID
+	}
+	if len(st.files) >= maxLabFiles {
+		st.mu.Unlock()
+		h.sendText(msg.Chat.ID, fmt.Sprintf("Максимум <b>%d</b> PDF за раз. Сейчас идёт накопление — дождитесь обработки или обработайте пачку, затем отправьте снова.", maxLabFiles))
+		return true
+	}
+	wasEmpty := len(st.files) == 0
+	st.files = append(st.files, f)
+	if st.timer != nil {
+		st.timer.Stop()
+	}
+	uid := telegramUserID
+	chatID := st.chatID
+	if wasEmpty {
+		h.sendText(msg.Chat.ID, "📄 <b>PDF получен.</b> Можно за "+fmt.Sprintf("%d", int(tgLabDebounce.Seconds()))+" с прислать ещё (до 5 вместе) — тогда обработаем одной пачкой; иначе обработаем сразу по истечении таймера.")
+	}
+	st.timer = time.AfterFunc(tgLabDebounce, func() {
+		h.flushTgLabBatch(context.Background(), uid, chatID)
+	})
+	st.mu.Unlock()
 	return true
+}
+
+func (h *Handler) flushTgLabBatch(ctx context.Context, telegramUserID string, chatID int64) {
+	v, ok := tgLabBatches.Load(telegramUserID)
+	if !ok {
+		return
+	}
+	st := v.(*tgLabBatchState)
+	st.mu.Lock()
+	if len(st.files) == 0 {
+		st.mu.Unlock()
+		return
+	}
+	files := make([]rawLabFile, len(st.files))
+	copy(files, st.files)
+	st.files = nil
+	if st.timer != nil {
+		st.timer.Stop()
+		st.timer = nil
+	}
+	st.mu.Unlock()
+	tgLabBatches.Delete(telegramUserID)
+
+	if !tryStartLabImport(telegramUserID) {
+		h.sendText(chatID, "Подождите, идёт обработка предыдущей загрузки…")
+		return
+	}
+	h.sendText(chatID, "Подождите, идёт обработка файла…")
+	go h.runTelegramLabImport(ctx, chatID, telegramUserID, files)
 }
 
 func (h *Handler) downloadTelegramFile(ctx context.Context, fileID string) ([]byte, error) {
@@ -128,27 +171,6 @@ func (h *Handler) downloadTelegramFile(ctx context.Context, fileID string) ([]by
 		return nil, fmt.Errorf("http %d", resp.StatusCode)
 	}
 	return io.ReadAll(resp.Body)
-}
-
-// handleLabUploadDone run import (also used when user typed «готово»).
-func (h *Handler) handleLabUploadDone(ctx context.Context, chatID int64, telegramUserID string) {
-	v, ok := pendingLabCollect.Load(telegramUserID)
-	if !ok {
-		return
-	}
-	st := v.(*labCollectState)
-	if len(st.Files) == 0 {
-		h.sendText(chatID, "Вы ещё не отправили ни одного PDF. Пришлите файл и нажмите «Готово».")
-		return
-	}
-	if !tryStartLabImport(telegramUserID) {
-		h.sendText(chatID, "Подождите, идёт обработка предыдущей загрузки…")
-		return
-	}
-	files := st.Files
-	pendingLabCollect.Delete(telegramUserID)
-	h.sendText(chatID, "Подождите, идёт обработка файла…")
-	go h.runTelegramLabImport(ctx, chatID, telegramUserID, files)
 }
 
 func tryStartLabImport(telegramUserID string) bool {
@@ -196,10 +218,10 @@ func (h *Handler) runTelegramLabImport(ctx context.Context, chatID int64, telegr
 			tgbotapi.NewInlineKeyboardButtonData("✖️ Отклонить", "lab_no"),
 		),
 	)
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = tgbotapi.ModeHTML
-	msg.ReplyMarkup = kb
-	if _, err := h.bot.Send(msg); err != nil {
+	m := tgbotapi.NewMessage(chatID, text)
+	m.ParseMode = tgbotapi.ModeHTML
+	m.ReplyMarkup = kb
+	if _, err := h.bot.Send(m); err != nil {
 		obs.BG("tg").Error(err, "send lab result", "chat_id", chatID)
 	}
 }
@@ -207,7 +229,7 @@ func (h *Handler) runTelegramLabImport(ctx context.Context, chatID int64, telegr
 func (h *Handler) handleLabConfirm(ctx context.Context, chatID int64, telegramUserID string, accept bool) {
 	pidVal, ok := labConfirmPendingID.Load(telegramUserID)
 	if !ok {
-		h.sendText(chatID, "Нет данных для подтверждения. Сначала загрузите анализ.")
+		h.sendText(chatID, "Нет данных для подтверждения. Сначала пришлите PDF с анализом.")
 		return
 	}
 	pendingID := pidVal.(string)
@@ -218,6 +240,7 @@ func (h *Handler) handleLabConfirm(ctx context.Context, chatID int64, telegramUs
 	}
 	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
 	if err != nil || chat == nil || chat.UserID == nil {
+		labConfirmPendingID.Delete(telegramUserID)
 		h.sendText(chatID, "Пользователь не найден.")
 		return
 	}

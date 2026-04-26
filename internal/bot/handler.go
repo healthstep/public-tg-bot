@@ -119,8 +119,8 @@ func (h *Handler) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 	telegramUserID := fmt.Sprintf("%d", msg.From.ID)
 	text := strings.TrimSpace(msg.Text)
 
-	// Main menu (reply keyboard) leaves the «collect PDFs» state.
-	if text == BtnAddData || text == BtnProgress || text == BtnWeeklyRecs || text == BtnUploadAnalyses {
+	// Main menu (reply keyboard) — сбрасываем ожидающие PDF/подтверждение разбора.
+	if text == BtnAddData || text == BtnProgress || text == BtnWeeklyRecs {
 		h.clearLabUpload(telegramUserID)
 	}
 
@@ -139,27 +139,9 @@ func (h *Handler) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		return
 	}
 
-	// Сбор PDF для разбора анализов (см. lab_import.go)
-	if msg.Document != nil {
-		if h.handleLabDocumentMessage(ctx, msg) {
-			return
-		}
-	}
-	if _, inLab := pendingLabCollect.Load(telegramUserID); inLab {
-		if text == "" {
-			return
-		}
-		if strings.HasPrefix(text, "/") {
-			h.clearLabUpload(telegramUserID)
-		} else {
-			tl := strings.ToLower(text)
-			if tl == "готово" || tl == "готов" {
-				h.handleLabUploadDone(ctx, msg.Chat.ID, telegramUserID)
-				return
-			}
-			h.sendText(msg.Chat.ID, "Пришлите PDF-файл или нажмите кнопки <b>«Готово»</b> / <b>«Отмена»</b> под предыдущим сообщением.")
-			return
-		}
+	// Любой PDF в чат (без меню) — разбор анализов (см. lab_import.go)
+	if h.handleAnyLabDocument(ctx, msg) {
+		return
 	}
 
 	switch {
@@ -184,8 +166,6 @@ func (h *Handler) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 	case BtnWeeklyRecs:
 		telegramUserIDStr := fmt.Sprintf("%d", msg.From.ID)
 		h.handleWeeklyRecommendations(ctx, msg.Chat.ID, telegramUserIDStr)
-	case BtnUploadAnalyses:
-		h.handleUploadAnalyses(ctx, msg)
 	default:
 		h.sendWithMainMenu(msg.Chat.ID, "Пожалуйста, выберите действие из меню.")
 	}
@@ -226,11 +206,6 @@ func (h *Handler) handleCallback(ctx context.Context, cb *tgbotapi.CallbackQuery
 			From: &tgbotapi.User{ID: cb.From.ID},
 			Chat: &tgbotapi.Chat{ID: chatID},
 		})
-	case data == "lab_done":
-		h.handleLabUploadDone(ctx, chatID, telegramUserID)
-	case data == "lab_cancel":
-		h.clearLabUpload(telegramUserID)
-		h.sendWithMainMenu(chatID, "Загрузка анализов отменена.")
 	case data == "lab_yes":
 		h.handleLabConfirm(ctx, chatID, telegramUserID, true)
 	case data == "lab_no":

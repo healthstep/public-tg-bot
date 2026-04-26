@@ -1,17 +1,11 @@
 package bot
 
-import (
-	"context"
-	"fmt"
-
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-)
+import tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 const (
-	BtnAddData        = "➕ Добавить данные"
-	BtnProgress       = "📊 Мой прогресс"
-	BtnWeeklyRecs     = "📅 Рекомендации недели"
-	BtnUploadAnalyses = "📄 Загрузить анализы"
+	BtnAddData    = "➕ Добавить данные"
+	BtnProgress   = "📊 Мой прогресс"
+	BtnWeeklyRecs = "📅 Рекомендации недели"
 )
 
 func MainMenuKeyboard() tgbotapi.ReplyKeyboardMarkup {
@@ -22,9 +16,6 @@ func MainMenuKeyboard() tgbotapi.ReplyKeyboardMarkup {
 		),
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton(BtnWeeklyRecs),
-		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton(BtnUploadAnalyses),
 		),
 	)
 }
@@ -38,10 +29,9 @@ func BackToMainInlineKeyboard() tgbotapi.InlineKeyboardMarkup {
 }
 
 func (h *Handler) sendMainMenu(chatID int64) {
-	h.sendWithMainMenu(chatID, "Главное меню ЗдравоШаг.\nВыберите действие:")
-}
-
-func (h *Handler) handleUploadAnalyses(ctx context.Context, msg *tgbotapi.Message) {
-	telegramUserID := fmt.Sprintf("%d", msg.From.ID)
-	h.startLabUploadFromMenu(ctx, msg.Chat.ID, telegramUserID)
+	h.sendWithMainMenu(
+		chatID,
+		"📄 Можно прислать в этот чат <b>PDF</b> с анализами (до 5 подряд за 2 с) — разбор и подтверждение, как в личном кабинете на сайте.\n\n"+
+			"Главное меню ЗдравоШаг.\nВыберите действие:",
+	)
 }
