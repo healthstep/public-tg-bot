@@ -63,9 +63,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace (
-	github.com/helthtech/core-health => ../core-health
-	github.com/helthtech/core-users => ../core-users
-)
-
 exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1

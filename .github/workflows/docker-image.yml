@@ -14,16 +14,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: public-tg-bot
-      - uses: actions/checkout@v4
-        with:
-          repository: healthstep/core-users
-          token: ${{ secrets.GOD_TOKEN }}
-          path: core-users
-      - uses: actions/checkout@v4
-        with:
-          repository: healthstep/core-health
-          token: ${{ secrets.GOD_TOKEN }}
-          path: core-health
       - name: Build the Docker image
         run: docker build . --file public-tg-bot/Dockerfile --build-arg GITHUB_TOKEN=${{ secrets.GOD_TOKEN }} --tag ${{ secrets.DOCKER_USER }}/public-tg-bot:${{ github.sha }}
 
@@ -34,16 +24,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: public-tg-bot
-      - uses: actions/checkout@v4
-        with:
-          repository: healthstep/core-users
-          token: ${{ secrets.GOD_TOKEN }}
-          path: core-users
-      - uses: actions/checkout@v4
-        with:
-          repository: healthstep/core-health
-          token: ${{ secrets.GOD_TOKEN }}
-          path: core-health
       - name: Docker login
         run: docker login -u ${{ secrets.DOCKER_USER }} -p ${{ secrets.DOCKER_PASSWORD }}
       - name: Build the Docker image

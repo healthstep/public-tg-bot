@@ -8,25 +8,21 @@ RUN apk update && apk add --no-cache \
 
 ARG GITHUB_TOKEN
 RUN echo "machine github.com login porebric password ${GITHUB_TOKEN}" > /root/.netrc && chmod 600 /root/.netrc
+RUN git config --global url."https://github.com/healthstep/".insteadOf "https://github.com/helthtech/"
 
-ENV GOPRIVATE=github.com
+ENV GOPRIVATE=github.com/helthtech
 
 WORKDIR /app
 
-COPY core-users/go.mod core-users/go.sum ./core-users/
-COPY core-health/go.mod core-health/go.sum ./core-health/
 COPY public-tg-bot/go.mod public-tg-bot/go.sum ./public-tg-bot/
 
 WORKDIR /app/public-tg-bot
 RUN go mod download
 
 WORKDIR /app
-COPY core-users/ ./core-users/
-COPY core-health/ ./core-health/
 COPY public-tg-bot/ ./public-tg-bot/
 
 WORKDIR /app/public-tg-bot
-RUN go mod tidy
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o /out/public-tg-bot ./cmd/public-tg-bot
 
 FROM alpine:3.19
