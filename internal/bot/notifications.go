@@ -18,7 +18,6 @@ type NotificationPayload struct {
 }
 
 
-// handleWeeklyRecommendations shows the user's weekly recommendation plan.
 func (h *Handler) handleWeeklyRecommendations(ctx context.Context, chatID int64, telegramUserID string) {
 	h.clearLabUpload(telegramUserID)
 	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
@@ -119,7 +118,6 @@ func recTypeIcon(t string) string {
 	}
 }
 
-// SendNotification sends a bot notification message to the chat.
 func (h *Handler) SendNotification(chatID int64, templateCode string, payloadJSON string) {
 	var payload NotificationPayload
 	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	healthpb "github.com/helthtech/core-health/pkg/proto/health"
@@ -13,7 +14,6 @@ import (
 	"github.com/porebric/logger"
 )
 
-// getUserSex resolves the user's sex from core-users for the given Telegram user.
 func (h *Handler) getUserSex(ctx context.Context, telegramUserID string) string {
 	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
 	if err != nil || chat == nil || chat.UserID == nil {
@@ -26,7 +26,6 @@ func (h *Handler) getUserSex(ctx context.Context, telegramUserID string) string 
 	return resp.GetSex()
 }
 
-// handleAddData shows the list of criteria groups.
 func (h *Handler) handleAddData(ctx context.Context, msg *tgbotapi.Message) {
 	telegramUserID := fmt.Sprintf("%d", msg.From.ID)
 	h.clearLabUpload(telegramUserID)
@@ -38,13 +37,11 @@ func (h *Handler) handleAddData(ctx context.Context, msg *tgbotapi.Message) {
 		userID = chat.UserID.String()
 	}
 
-	// Fetch groups.
 	groupResp, err := h.healthClient.ListGroups(ctx, &healthpb.ListGroupsRequest{})
 	if err != nil {
 		logger.Error(ctx, err, "list groups")
 	}
 
-	// Fetch all criteria with user values.
 	criteriaResp, err := h.healthClient.ListCriteria(ctx, &healthpb.ListCriteriaRequest{
 		UserId:  userID,
 		UserSex: userSex,
@@ -55,7 +52,6 @@ func (h *Handler) handleAddData(ctx context.Context, msg *tgbotapi.Message) {
 		return
 	}
 
-	// Get user values for ✅ markers.
 	var userEntries []*healthpb.UserCriterionEntry
 	if userID != "" {
 		ucResp, err := h.healthClient.GetUserCriteria(ctx, &healthpb.GetUserCriteriaRequest{UserId: userID, UserSex: userSex})
@@ -70,13 +66,11 @@ func (h *Handler) handleAddData(ctx context.Context, msg *tgbotapi.Message) {
 		}
 	}
 
-	// Cache criterion names and input types.
 	for _, c := range criteriaResp.GetCriteria() {
 		criterionNames.Store(c.GetId(), c.GetName())
 		criterionInputTypes.Store(c.GetId(), c.GetInputType())
 	}
 
-	// Group criteria by group_id.
 	byGroup := make(map[string][]*healthpb.Criterion)
 	ungrouped := []*healthpb.Criterion{}
 	for _, c := range criteriaResp.GetCriteria() {
@@ -90,7 +84,6 @@ func (h *Handler) handleAddData(ctx context.Context, msg *tgbotapi.Message) {
 
 	groups := groupResp.GetGroups()
 	if len(groups) == 0 {
-		// No groups — show flat list (fallback).
 		h.showFlatCriteriaList(msg.Chat.ID, criteriaResp.GetCriteria(), filledMap)
 		return
 	}
@@ -112,7 +105,6 @@ func (h *Handler) handleAddData(ctx context.Context, msg *tgbotapi.Message) {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(label, "group_"+g.GetId()),
 		))
-		// Cache group criteria list.
 		criterionGroups.Store(g.GetId(), items)
 	}
 
@@ -138,7 +130,6 @@ func (h *Handler) handleAddData(ctx context.Context, msg *tgbotapi.Message) {
 	}
 }
 
-// handleGroupSelect shows the criteria list for a specific group.
 func (h *Handler) handleGroupSelect(ctx context.Context, chatID int64, telegramUserID string, groupID string) {
 	val, ok := criterionGroups.Load(groupID)
 	if !ok {
@@ -147,7 +138,6 @@ func (h *Handler) handleGroupSelect(ctx context.Context, chatID int64, telegramU
 	}
 	criteria := val.([]*healthpb.Criterion)
 
-	// Get user values for ✅ markers.
 	chat, _ := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
 	filledMap := make(map[string]bool)
 	if chat != nil && chat.UserID != nil {
@@ -187,7 +177,6 @@ func (h *Handler) handleGroupSelect(ctx context.Context, chatID int64, telegramU
 	}
 }
 
-// showFlatCriteriaList renders a flat (ungrouped) criteria list.
 func (h *Handler) showFlatCriteriaList(chatID int64, criteria []*healthpb.Criterion, filledMap map[string]bool) {
 	if len(criteria) == 0 {
 		h.sendText(chatID, "Нет доступных показателей.")
@@ -217,7 +206,6 @@ func (h *Handler) showFlatCriteriaList(chatID int64, criteria []*healthpb.Criter
 	}
 }
 
-// handleCriterionSelect asks the user for input based on the criterion's input_type.
 func (h *Handler) handleCriterionSelect(ctx context.Context, chatID int64, telegramUserID string, criterionID string) {
 	name := ""
 	if v, ok := criterionNames.Load(criterionID); ok {
@@ -255,7 +243,6 @@ func (h *Handler) handleCriterionSelect(ctx context.Context, chatID int64, teleg
 	h.sendText(chatID, promptText)
 }
 
-// handleCancelAll resets all user criteria.
 func (h *Handler) handleCancelAll(ctx context.Context, msg *tgbotapi.Message) {
 	telegramUserID := fmt.Sprintf("%d", msg.From.ID)
 	h.clearLabUpload(telegramUserID)
@@ -275,7 +262,6 @@ func (h *Handler) handleCancelAll(ctx context.Context, msg *tgbotapi.Message) {
 	h.sendWithMainMenu(msg.Chat.ID, "✅ Все ваши данные сброшены.")
 }
 
-// handleUserInput processes text input for a pending criterion.
 func (h *Handler) handleUserInput(ctx context.Context, msg *tgbotapi.Message, pending PendingInput) {
 	chatID := msg.Chat.ID
 	telegramUserID := strconv.FormatInt(msg.From.ID, 10)
@@ -316,6 +302,93 @@ func (h *Handler) handleUserInput(ctx context.Context, msg *tgbotapi.Message, pe
 		value = fmt.Sprintf("%.2f", numVal)
 	}
 
+	pendingDateSelection.Store(telegramUserID, PendingDate{
+		Kind:          "criterion",
+		CriterionID:   pending.CriterionID,
+		CriterionName: pending.CriterionName,
+		Value:         value,
+	})
+	h.sendDateKeyboard(chatID, fmt.Sprintf("Когда сдан <b>%s</b>?", pending.CriterionName))
+}
+
+func dateKeyboard() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📅 Сегодня", "date_today"),
+			tgbotapi.NewInlineKeyboardButtonData("📅 Вчера", "date_yesterday"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✏️ Ввести дату", "date_pick"),
+			tgbotapi.NewInlineKeyboardButtonData("⏭ Пропустить", "date_skip"),
+		),
+	)
+}
+
+func (h *Handler) sendDateKeyboard(chatID int64, text string) {
+	m := tgbotapi.NewMessage(chatID, text)
+	m.ParseMode = tgbotapi.ModeHTML
+	m.ReplyMarkup = dateKeyboard()
+	if _, err := h.bot.Send(m); err != nil {
+		obs.BG("tg").Error(err, "send date keyboard", "chat_id", chatID)
+	}
+}
+
+func (h *Handler) handleDateCallback(ctx context.Context, chatID int64, telegramUserID string, data string) {
+	val, ok := pendingDateSelection.Load(telegramUserID)
+	if !ok {
+		h.sendWithMainMenu(chatID, "Нет ожидающих данных. Попробуйте заново.")
+		return
+	}
+	pd := val.(PendingDate)
+
+	switch data {
+	case "date_today":
+		pendingDateSelection.Delete(telegramUserID)
+		h.finishWithDate(ctx, chatID, telegramUserID, pd, time.Now().Format("2006-01-02"))
+	case "date_yesterday":
+		pendingDateSelection.Delete(telegramUserID)
+		h.finishWithDate(ctx, chatID, telegramUserID, pd, time.Now().AddDate(0, 0, -1).Format("2006-01-02"))
+	case "date_skip":
+		pendingDateSelection.Delete(telegramUserID)
+		h.finishWithDate(ctx, chatID, telegramUserID, pd, "")
+	case "date_pick":
+		pd.WaitingForText = true
+		pendingDateSelection.Store(telegramUserID, pd)
+		h.sendText(chatID, "Введите дату в формате <b>ДД.ММ.ГГГГ</b> (например, 15.03.2025):")
+	}
+}
+
+func (h *Handler) handleDateTextInput(ctx context.Context, msg *tgbotapi.Message, pd PendingDate) {
+	chatID := msg.Chat.ID
+	telegramUserID := fmt.Sprintf("%d", msg.From.ID)
+	text := strings.TrimSpace(msg.Text)
+
+	t, err := time.Parse("02.01.2006", text)
+	if err != nil {
+		h.sendText(chatID, "Неверный формат. Введите дату как <b>ДД.ММ.ГГГГ</b> (например, 15.03.2025):")
+		pd.WaitingForText = true
+		pendingDateSelection.Store(telegramUserID, pd)
+		return
+	}
+	if t.After(time.Now()) {
+		h.sendText(chatID, "Дата не может быть в будущем. Введите корректную дату:")
+		pd.WaitingForText = true
+		pendingDateSelection.Store(telegramUserID, pd)
+		return
+	}
+	h.finishWithDate(ctx, chatID, telegramUserID, pd, t.Format("2006-01-02"))
+}
+
+func (h *Handler) finishWithDate(ctx context.Context, chatID int64, telegramUserID string, pd PendingDate, measuredAt string) {
+	switch pd.Kind {
+	case "criterion":
+		h.saveCriterionWithDate(ctx, chatID, telegramUserID, pd, measuredAt)
+	case "lab":
+		h.handleLabConfirm(ctx, chatID, telegramUserID, true, measuredAt)
+	}
+}
+
+func (h *Handler) saveCriterionWithDate(ctx context.Context, chatID int64, telegramUserID string, pd PendingDate, measuredAt string) {
 	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)
 	if err != nil || chat == nil || chat.UserID == nil {
 		h.sendText(chatID, "Вы не авторизованы.")
@@ -324,9 +397,10 @@ func (h *Handler) handleUserInput(ctx context.Context, msg *tgbotapi.Message, pe
 
 	_, err = h.healthClient.SetUserCriterion(ctx, &healthpb.SetUserCriterionRequest{
 		UserId:      chat.UserID.String(),
-		CriterionId: pending.CriterionID,
-		Value:       value,
+		CriterionId: pd.CriterionID,
+		Value:       pd.Value,
 		Source:      "telegram",
+		MeasuredAt:  measuredAt,
 	})
 	if err != nil {
 		logger.Error(ctx, err, "set user criterion")
@@ -334,7 +408,7 @@ func (h *Handler) handleUserInput(ctx context.Context, msg *tgbotapi.Message, pe
 		return
 	}
 
-	h.sendWithMainMenu(chatID, fmt.Sprintf("✅ <b>%s</b> сохранено!", pending.CriterionName))
+	h.sendWithMainMenu(chatID, fmt.Sprintf("✅ <b>%s</b> сохранено!", pd.CriterionName))
 }
 
 func criterionLevelIcon(level int) string {

@@ -18,24 +18,29 @@ import (
 	"github.com/porebric/logger"
 )
 
-// pendingNumericInput stores users waiting to type a criterion value.
-// key: telegramUserID (string), value: PendingInput
 var pendingNumericInput sync.Map
 
-// criterionNames caches criterionID -> criterionName to avoid embedding names in
-// callback data (Telegram limits callback_data to 64 bytes).
 var criterionNames sync.Map
 
-// criterionInputTypes caches criterionID -> inputType ("numeric", "check", "boolean").
 var criterionInputTypes sync.Map
 
-// criterionGroups caches groupID -> []*healthpb.Criterion for group-based navigation.
 var criterionGroups sync.Map
+
+var pendingDateSelection sync.Map
 
 type PendingInput struct {
 	CriterionID   string
 	CriterionName string
-	InputType     string // "numeric" or "check"
+	InputType     string
+}
+
+type PendingDate struct {
+	Kind            string
+	CriterionID     string
+	CriterionName   string
+	Value           string
+	PendingImportID string
+	WaitingForText  bool
 }
 
 type Handler struct {
@@ -119,29 +124,36 @@ func (h *Handler) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 	telegramUserID := fmt.Sprintf("%d", msg.From.ID)
 	text := strings.TrimSpace(msg.Text)
 
-	// Main menu (reply keyboard) — сбрасываем ожидающие PDF/подтверждение разбора и выбор анализа.
 	if text == BtnAddData || text == BtnProgress || text == BtnWeeklyRecs {
 		h.clearLabUpload(telegramUserID)
 		h.clearAnalysisPick(telegramUserID)
+		pendingDateSelection.Delete(telegramUserID)
 	}
 
-	// "cancel" resets all criteria.
 	if strings.EqualFold(text, "отмена") || strings.EqualFold(text, "cancel") {
 		pendingNumericInput.Delete(telegramUserID)
+		pendingDateSelection.Delete(telegramUserID)
 		h.clearLabUpload(telegramUserID)
 		h.clearAnalysisPick(telegramUserID)
 		h.handleCancelAll(ctx, msg)
 		return
 	}
 
-	// Check if user is waiting to type a criterion value.
+	if val, ok := pendingDateSelection.Load(telegramUserID); ok {
+		pd := val.(PendingDate)
+		if pd.WaitingForText {
+			pendingDateSelection.Delete(telegramUserID)
+			h.handleDateTextInput(ctx, msg, pd)
+			return
+		}
+	}
+
 	if val, ok := pendingNumericInput.LoadAndDelete(telegramUserID); ok {
 		pending := val.(PendingInput)
 		h.handleUserInput(ctx, msg, pending)
 		return
 	}
 
-	// Любой PDF в чат (без меню) — разбор анализов (см. lab_import.go)
 	if h.handleAnyLabDocument(ctx, msg) {
 		return
 	}
@@ -160,7 +172,6 @@ func (h *Handler) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 		return
 	}
 
-	// Ожидание ввода id анализа для инструкции «Как получить»
 	if h.handleAnalysisPickReply(ctx, msg, telegramUserID) {
 		return
 	}
@@ -187,12 +198,10 @@ func (h *Handler) handleCallback(ctx context.Context, cb *tgbotapi.CallbackQuery
 	telegramUserID := fmt.Sprintf("%d", cb.From.ID)
 
 	switch {
-	// User selects a group.
 	case strings.HasPrefix(data, "group_"):
 		groupID := strings.TrimPrefix(data, "group_")
 		h.handleGroupSelect(ctx, chatID, telegramUserID, groupID)
 
-	// User selects a criterion from the list.
 	case strings.HasPrefix(data, "criterion_select_"):
 		criterionID := strings.TrimPrefix(data, "criterion_select_")
 		h.handleCriterionSelect(ctx, chatID, telegramUserID, criterionID)
@@ -218,9 +227,11 @@ func (h *Handler) handleCallback(ctx context.Context, cb *tgbotapi.CallbackQuery
 			Chat: &tgbotapi.Chat{ID: chatID},
 		})
 	case data == "lab_yes":
-		h.handleLabConfirm(ctx, chatID, telegramUserID, true)
+		h.handleLabYesShowDate(ctx, chatID, telegramUserID)
 	case data == "lab_no":
-		h.handleLabConfirm(ctx, chatID, telegramUserID, false)
+		h.handleLabConfirm(ctx, chatID, telegramUserID, false, "")
+	case data == "date_today" || data == "date_yesterday" || data == "date_skip" || data == "date_pick":
+		h.handleDateCallback(ctx, chatID, telegramUserID, data)
 	}
 }
 

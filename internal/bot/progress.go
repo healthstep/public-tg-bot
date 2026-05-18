@@ -22,7 +22,6 @@ func (h *Handler) handleProgress(ctx context.Context, msg *tgbotapi.Message) {
 
 	userID := chat.UserID.String()
 
-	// Get progress stats.
 	prog, err := h.healthClient.GetProgress(ctx, &healthpb.GetProgressRequest{UserId: userID})
 	if err != nil {
 		logger.Error(ctx, err, "get progress")
@@ -30,7 +29,6 @@ func (h *Handler) handleProgress(ctx context.Context, msg *tgbotapi.Message) {
 		return
 	}
 
-	// Get all criteria with user values.
 	criteria, err := h.healthClient.GetUserCriteria(ctx, &healthpb.GetUserCriteriaRequest{UserId: userID})
 	if err != nil {
 		logger.Error(ctx, err, "get user criteria")

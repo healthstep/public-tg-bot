@@ -15,7 +15,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// pendingAnalysisPick: user is expected to reply with an analysis id number.
 var pendingAnalysisPick sync.Map
 
 func progressReplyMarkup() tgbotapi.InlineKeyboardMarkup {

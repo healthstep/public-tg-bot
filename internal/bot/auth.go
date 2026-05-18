@@ -89,8 +89,6 @@ func (h *Handler) handleRegistration(ctx context.Context, msg *tgbotapi.Message,
 	h.requestPhone(msg.Chat.ID)
 }
 
-// handlePasswordCommand lets a registered user change their password.
-// Usage: /password <newpassword>
 func (h *Handler) handlePasswordCommand(ctx context.Context, msg *tgbotapi.Message) {
 	telegramUserID := strconv.FormatInt(msg.From.ID, 10)
 	chat, err := h.chatRepo.FindByTelegramUserID(ctx, telegramUserID)

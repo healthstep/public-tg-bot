@@ -20,13 +20,10 @@ import (
 const maxLabFiles = 5
 const tgLabDebounce = 2 * time.Second
 
-// Ожидает подтверждения по кнопкам lab_yes / lab_no
 var labConfirmPendingID sync.Map
 
-// Пока идёт gRPC ImportCriteriaFromPdf
 var pendingLabImport sync.Map
 
-// tgLabBatches: дебаунс — несколько PDF подряд объединяются (до 5) и обрабатываются одной загрузкой.
 var tgLabBatches sync.Map
 
 type tgLabBatchState struct {
@@ -60,7 +57,6 @@ func cancelTgLabBatch(telegramUserID string) {
 	tgLabBatches.Delete(telegramUserID)
 }
 
-// handleAnyLabDocument: любой PDF в чат (без пункта меню) — в очередь, через debounce — ImportCriteriaFromPdf.
 func (h *Handler) handleAnyLabDocument(ctx context.Context, msg *tgbotapi.Message) bool {
 	if msg == nil || msg.Document == nil {
 		return false
@@ -226,7 +222,26 @@ func (h *Handler) runTelegramLabImport(ctx context.Context, chatID int64, telegr
 	}
 }
 
-func (h *Handler) handleLabConfirm(ctx context.Context, chatID int64, telegramUserID string, accept bool) {
+func (h *Handler) handleLabYesShowDate(ctx context.Context, chatID int64, telegramUserID string) {
+	pidVal, ok := labConfirmPendingID.Load(telegramUserID)
+	if !ok {
+		h.sendText(chatID, "Нет данных для подтверждения. Сначала пришлите PDF с анализом.")
+		return
+	}
+	pendingID := pidVal.(string)
+	if pendingID == "" {
+		labConfirmPendingID.Delete(telegramUserID)
+		h.sendText(chatID, "Нечего применять.")
+		return
+	}
+	pendingDateSelection.Store(telegramUserID, PendingDate{
+		Kind:            "lab",
+		PendingImportID: pendingID,
+	})
+	h.sendDateKeyboard(chatID, "Когда были сданы анализы?")
+}
+
+func (h *Handler) handleLabConfirm(ctx context.Context, chatID int64, telegramUserID string, accept bool, measuredAt string) {
 	pidVal, ok := labConfirmPendingID.Load(telegramUserID)
 	if !ok {
 		h.sendText(chatID, "Нет данных для подтверждения. Сначала пришлите PDF с анализом.")
@@ -247,10 +262,11 @@ func (h *Handler) handleLabConfirm(ctx context.Context, chatID int64, telegramUs
 	userID := chat.UserID.String()
 	userSex := h.getUserSex(ctx, telegramUserID)
 	out, err := h.healthClient.ConfirmPendingImport(ctx, &healthpb.ConfirmPendingImportRequest{
-		UserId:    userID,
-		PendingId: pendingID,
-		Accept:    accept,
-		UserSex:   userSex,
+		UserId:     userID,
+		PendingId:  pendingID,
+		Accept:     accept,
+		UserSex:    userSex,
+		MeasuredAt: measuredAt,
 	})
 	labConfirmPendingID.Delete(telegramUserID)
 	if err != nil {

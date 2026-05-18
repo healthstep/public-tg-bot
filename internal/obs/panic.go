@@ -8,8 +8,6 @@ import (
 	"strings"
 )
 
-// RecoverAndExit recovers from panic, logs a single line (stack flattened), and exits 1.
-// Register as the last defer in main() so it runs first on panic: defer obs.RecoverAndExit()
 func RecoverAndExit() {
 	r := recover()
 	if r == nil {
