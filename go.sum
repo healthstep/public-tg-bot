@@ -30,8 +30,8 @@ github.com/grpc-ecosystem/grpc-gateway/v2 v2.24.0 h1:TmHmbvxPmaegwhDubVz0lICL0J5
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.24.0/go.mod h1:qztMSjm835F2bXf+5HKAPIS5qsmQDqZna/PgVt4rWtI=
 github.com/helthtech/core-health v0.0.0-20260518140406-f3ef77fb9648 h1:fKk6zs2bDWUwZt+GZG2tYM3/dL6hoOBodlRcjeVgVYk=
 github.com/helthtech/core-health v0.0.0-20260518140406-f3ef77fb9648/go.mod h1:kxsUI9N5Z7cdlZb4FXXbcRlq2G5c6iuZfskYiYLK3IE=
-github.com/helthtech/core-users v0.0.0-20260518135956-638a581757fc h1:8T/jziI4YOrHlnLcy3HUU5aD0Y6tTd2kAwdgEgh/6Hg=
-github.com/helthtech/core-users v0.0.0-20260518135956-638a581757fc/go.mod h1:YIwjCTv4oyMLR4IVBw4UJ40Q/tTcryWiqKCBtP+iUqA=
+github.com/helthtech/core-users v0.0.0-20260519072751-9dc9ec18c44f h1:i3AMSDYGwwp3Chi7ZKirUFkCMvQGEwix5x2kLxJRNB8=
+github.com/helthtech/core-users v0.0.0-20260519072751-9dc9ec18c44f/go.mod h1:YIwjCTv4oyMLR4IVBw4UJ40Q/tTcryWiqKCBtP+iUqA=
 github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
 github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
 github.com/jackc/pgservicefile v0.0.0-20231201235250-de7065d80cb9 h1:L0QtFUgDarD7Fpv9jeVMgy/+Ec0mtnmYuImjTz6dtDA=

@@ -7,7 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/helthtech/core-health v0.0.0-20260518140406-f3ef77fb9648
-	github.com/helthtech/core-users v0.0.0-20260518135956-638a581757fc
+	github.com/helthtech/core-users v0.0.0-20260519072751-9dc9ec18c44f
 	github.com/nats-io/nats.go v1.39.1
 	github.com/porebric/configs v1.0.3
 	github.com/porebric/logger v0.1.0
