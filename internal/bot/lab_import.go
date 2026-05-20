@@ -222,24 +222,6 @@ func (h *Handler) runTelegramLabImport(ctx context.Context, chatID int64, telegr
 	}
 }
 
-func (h *Handler) handleLabYesShowDate(ctx context.Context, chatID int64, telegramUserID string) {
-	pidVal, ok := labConfirmPendingID.Load(telegramUserID)
-	if !ok {
-		h.sendText(chatID, "Нет данных для подтверждения. Сначала пришлите PDF с анализом.")
-		return
-	}
-	pendingID := pidVal.(string)
-	if pendingID == "" {
-		labConfirmPendingID.Delete(telegramUserID)
-		h.sendText(chatID, "Нечего применять.")
-		return
-	}
-	pendingDateSelection.Store(telegramUserID, PendingDate{
-		Kind:            "lab",
-		PendingImportID: pendingID,
-	})
-	h.sendDateKeyboard(chatID, "Когда были сданы анализы?")
-}
 
 func (h *Handler) handleLabConfirm(ctx context.Context, chatID int64, telegramUserID string, accept bool, measuredAt string) {
 	pidVal, ok := labConfirmPendingID.Load(telegramUserID)

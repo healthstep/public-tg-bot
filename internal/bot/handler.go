@@ -227,7 +227,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *tgbotapi.CallbackQuery
 			Chat: &tgbotapi.Chat{ID: chatID},
 		})
 	case data == "lab_yes":
-		h.handleLabYesShowDate(ctx, chatID, telegramUserID)
+		h.handleLabConfirm(ctx, chatID, telegramUserID, true, "")
 	case data == "lab_no":
 		h.handleLabConfirm(ctx, chatID, telegramUserID, false, "")
 	case data == "date_today" || data == "date_yesterday" || data == "date_skip" || data == "date_pick":
