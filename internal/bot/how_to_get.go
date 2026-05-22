@@ -93,8 +93,7 @@ func (h *Handler) handleAnalysisPickReply(ctx context.Context, msg *tgbotapi.Mes
 	if instr == "" {
 		body = fmt.Sprintf("<b>%s</b>\n\nИнструкция пока не заполнена.", escapeHTML(a.GetName()))
 	} else {
-		instrHTML := strings.ReplaceAll(escapeHTML(instr), "\n", "<br/>")
-		body = fmt.Sprintf("<b>%s</b><br/><br/>%s", escapeHTML(a.GetName()), instrHTML)
+		body = fmt.Sprintf("<b>%s</b>\n\n%s", escapeHTML(a.GetName()), escapeHTML(instr))
 	}
 	h.sendWithMainMenu(msg.Chat.ID, body)
 	return true
